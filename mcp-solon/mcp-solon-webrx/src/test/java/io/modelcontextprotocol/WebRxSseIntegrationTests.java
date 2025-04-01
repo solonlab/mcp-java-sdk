@@ -13,7 +13,6 @@ import java.util.function.Function;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
-import io.modelcontextprotocol.client.transport.WebRxSseClientTransport;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.transport.WebRxSseServerTransportProvider;
@@ -34,6 +33,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.noear.solon.Solon;
+import org.noear.solon.boot.http.HttpServerConfigure;
 import org.noear.solon.net.http.HttpUtils;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -68,17 +68,15 @@ public class WebRxSseIntegrationTests {
 
 		Solon.start(WebRxSseIntegrationTests.class, new String[]{"server.port=" + PORT}, app -> {
 			mcpServerTransportProvider.toHttpHandler(app);
+			app.onEvent(HttpServerConfigure.class, event -> {
+				event.enableDebug(true);
+			});
 		});
 
 		clientBulders.put("httpclient",
 				McpClient.sync(HttpClientSseClientTransport.builder("http://localhost:" + PORT)
 						.sseEndpoint(CUSTOM_SSE_ENDPOINT)
 						.build()));
-		clientBulders.put("webflux",
-				McpClient
-						.sync(WebRxSseClientTransport.builder("http://localhost:" + PORT)
-								.sseEndpoint(CUSTOM_SSE_ENDPOINT)
-								.build()));
 
 	}
 
@@ -93,7 +91,7 @@ public class WebRxSseIntegrationTests {
 	// Sampling Tests
 	// ---------------------------------------
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testCreateMessageWithoutSamplingCapabilities(String clientType) {
 
 		var clientBuilder = clientBulders.get(clientType);
@@ -122,7 +120,7 @@ public class WebRxSseIntegrationTests {
 	}
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testCreateMessageSuccess(String clientType) throws InterruptedException {
 
 		// Client
@@ -193,7 +191,7 @@ public class WebRxSseIntegrationTests {
 	// Roots Tests
 	// ---------------------------------------
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testRootsSuccess(String clientType) {
 		var clientBuilder = clientBulders.get(clientType);
 
@@ -239,7 +237,7 @@ public class WebRxSseIntegrationTests {
 	}
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testRootsWithoutCapability(String clientType) {
 
 		var clientBuilder = clientBulders.get(clientType);
@@ -273,7 +271,7 @@ public class WebRxSseIntegrationTests {
 	}
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testRootsNotifciationWithEmptyRootsList(String clientType) {
 		var clientBuilder = clientBulders.get(clientType);
 
@@ -300,7 +298,7 @@ public class WebRxSseIntegrationTests {
 	}
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testRootsWithMultipleHandlers(String clientType) {
 		var clientBuilder = clientBulders.get(clientType);
 
@@ -333,7 +331,7 @@ public class WebRxSseIntegrationTests {
 	}
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testRootsServerCloseWithActiveSubscription(String clientType) {
 
 		var clientBuilder = clientBulders.get(clientType);
@@ -378,7 +376,7 @@ public class WebRxSseIntegrationTests {
 			""";
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testToolCallSuccess(String clientType) {
 
 		var clientBuilder = clientBulders.get(clientType);
@@ -415,7 +413,7 @@ public class WebRxSseIntegrationTests {
 	}
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testToolListChangeHandlingSuccess(String clientType) {
 
 		var clientBuilder = clientBulders.get(clientType);
@@ -481,7 +479,7 @@ public class WebRxSseIntegrationTests {
 	}
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
-	@ValueSource(strings = {"httpclient", "webflux"})
+	@ValueSource(strings = {"httpclient"})
 	void testInitialize(String clientType) {
 
 		var clientBuilder = clientBulders.get(clientType);

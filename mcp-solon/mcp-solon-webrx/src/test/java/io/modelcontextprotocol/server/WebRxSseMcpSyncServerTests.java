@@ -9,6 +9,7 @@ import io.modelcontextprotocol.server.transport.WebRxSseServerTransportProvider;
 import io.modelcontextprotocol.spec.McpServerTransportProvider;
 import org.junit.jupiter.api.Timeout;
 import org.noear.solon.Solon;
+import org.noear.solon.boot.http.HttpServerConfigure;
 
 /**
  * Tests for {@link McpSyncServer} using {@link WebRxSseServerTransportProvider}.
@@ -16,7 +17,7 @@ import org.noear.solon.Solon;
  * @author Christian Tzolov
  */
 @Timeout(15) // Giving extra time beyond the client timeout
-class WebRxSseMcpServerTests extends AbstractMcpSyncServerTests {
+class WebRxSseMcpSyncServerTests extends AbstractMcpSyncServerTests {
 
 	private static final int PORT = 8182;
 
@@ -26,12 +27,16 @@ class WebRxSseMcpServerTests extends AbstractMcpSyncServerTests {
 
 	@Override
 	protected McpServerTransportProvider createMcpTransportProvider() {
-		transportProvider = new WebRxSseServerTransportProvider.Builder().objectMapper(new ObjectMapper())
+		transportProvider = new WebRxSseServerTransportProvider.Builder()
+				.objectMapper(new ObjectMapper())
 				.messageEndpoint(MESSAGE_ENDPOINT)
 				.build();
 
-		Solon.start(WebRxSseMcpServerTests.class, new String[]{"-server.port=" + PORT}, app -> {
+		Solon.start(WebRxSseMcpSyncServerTests.class, new String[]{"-server.port=" + PORT}, app -> {
 			transportProvider.toHttpHandler(app);
+			app.onEvent(HttpServerConfigure.class, event -> {
+				event.enableDebug(true);
+			});
 		});
 
 		return transportProvider;
