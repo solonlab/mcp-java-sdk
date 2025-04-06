@@ -2,7 +2,7 @@
 
 There is no java-ee. Compared to the spring framework:
 
-* more concurrency (700%), 
+* more concurrency (300%), 
 * less memory (50%), 
 * faster startup (1000%), 
 * smaller packaging (10%), 
