@@ -51,6 +51,7 @@
 			<groupId>org.noear</groupId>
 			<artifactId>solon-net-httputils</artifactId>
 			<version>${solon.version}</version>
+			<scope>test</scope>
 		</dependency>
 
 		<dependency>
@@ -62,7 +63,7 @@
 
 		<dependency>
 			<groupId>org.noear</groupId>
-			<artifactId>solon-web</artifactId>
+			<artifactId>solon-lib</artifactId>
 			<version>${solon.version}</version>
 			<scope>test</scope>
 		</dependency>
@@ -112,13 +113,6 @@
 			<groupId>org.awaitility</groupId>
 			<artifactId>awaitility</artifactId>
 			<version>${awaitility.version}</version>
-			<scope>test</scope>
-		</dependency>
-
-		<dependency>
-			<groupId>ch.qos.logback</groupId>
-			<artifactId>logback-classic</artifactId>
-			<version>${logback.version}</version>
 			<scope>test</scope>
 		</dependency>
 
