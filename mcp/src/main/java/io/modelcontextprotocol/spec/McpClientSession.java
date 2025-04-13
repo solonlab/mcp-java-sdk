@@ -107,7 +107,7 @@ public class McpClientSession implements McpSession {
 	public McpClientSession(Duration requestTimeout, McpClientTransport transport,
 			Map<String, RequestHandler<?>> requestHandlers, Map<String, NotificationHandler> notificationHandlers) {
 
-		Assert.notNull(requestTimeout, "The requstTimeout can not be null");
+		Assert.notNull(requestTimeout, "The requestTimeout can not be null");
 		Assert.notNull(transport, "The transport can not be null");
 		Assert.notNull(requestHandlers, "The requestHandlers can not be null");
 		Assert.notNull(notificationHandlers, "The notificationHandlers can not be null");
@@ -127,7 +127,7 @@ public class McpClientSession implements McpSession {
 				logger.debug("Received Response: {}", response);
 				var sink = pendingResponses.remove(response.id());
 				if (sink == null) {
-					logger.warn("Unexpected response for unkown id {}", response.id());
+					logger.warn("Unexpected response for unknown id {}", response.id());
 				}
 				else {
 					sink.success(response);
@@ -258,7 +258,7 @@ public class McpClientSession implements McpSession {
 	 * @return A Mono that completes when the notification is sent
 	 */
 	@Override
-	public Mono<Void> sendNotification(String method, Map<String, Object> params) {
+	public Mono<Void> sendNotification(String method, Object params) {
 		McpSchema.JSONRPCNotification jsonrpcNotification = new McpSchema.JSONRPCNotification(McpSchema.JSONRPC_VERSION,
 				method, params);
 		return this.transport.sendMessage(jsonrpcNotification);
