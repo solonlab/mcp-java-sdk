@@ -12,7 +12,7 @@ import java.util.function.Function;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
+import io.modelcontextprotocol.client.transport.WebRxSseClientTransport;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.transport.WebRxSseServerTransportProvider;
@@ -35,6 +35,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.noear.solon.Solon;
 import org.noear.solon.boot.http.HttpServerConfigure;
 import org.noear.solon.net.http.HttpUtils;
+import org.noear.solon.net.http.HttpUtilsBuilder;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
 
@@ -74,7 +75,7 @@ public class WebRxSseIntegrationTests {
 		});
 
 		clientBulders.put("httpclient",
-				McpClient.sync(HttpClientSseClientTransport.builder("http://localhost:" + PORT)
+				McpClient.sync(WebRxSseClientTransport.builder(new HttpUtilsBuilder().baseUri("http://localhost:" + PORT))
 						.sseEndpoint(CUSTOM_SSE_ENDPOINT)
 						.build()));
 
