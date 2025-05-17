@@ -184,10 +184,9 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 
 		logger.debug("Attempting to broadcast message to {} active sessions", sessions.size());
 
-		return Flux.fromStream(sessions.values().stream())
+		return Flux.fromIterable(sessions.values())
 				.flatMap(session -> session.sendNotification(method, params)
-						.doOnError(e -> logger.error("Failed to " + "send message to session " + "{}: {}", session.getId(),
-								e.getMessage()))
+						.doOnError(e -> logger.error("Failed to send message to session {}: {}", session.getId(), e.getMessage()))
 						.onErrorComplete())
 				.then();
 	}
