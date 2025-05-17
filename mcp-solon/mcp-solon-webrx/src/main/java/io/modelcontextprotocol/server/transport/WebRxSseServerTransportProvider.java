@@ -277,13 +277,15 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 			return;
 		}
 
-		if (Utils.isEmpty(ctx.param("sessionId"))) {
+		String sessionId = ctx.param("sessionId");
+
+		if (Utils.isEmpty(sessionId)) {
 			ctx.status(404);
 			ctx.render(new McpError("Session ID missing in message endpoint"));
 			return;
 		}
 
-		McpServerSession session = sessions.get(ctx.param("sessionId"));
+		McpServerSession session = sessions.get(sessionId);
 
 		if (session == null) {
 			ctx.returnValue(new Entity().status(404).body(new McpError("Session not found: " + sessionId)));
