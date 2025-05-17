@@ -69,7 +69,7 @@
 		<logback.version>1.5.15</logback.version>
 		<jackson.version>2.17.0</jackson.version>
 		<springframework.version>6.2.1</springframework.version>
-		<solon.version>3.2.1</solon.version>
+		<solon.version>3.3.0</solon.version>
 
 		<!-- plugin versions -->
 		<maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
