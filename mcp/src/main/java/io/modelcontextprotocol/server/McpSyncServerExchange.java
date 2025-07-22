@@ -5,7 +5,6 @@
 package io.modelcontextprotocol.server;
 
 import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpSchema.LoggingLevel;
 import io.modelcontextprotocol.spec.McpSchema.LoggingMessageNotification;
 
 /**
@@ -100,12 +99,29 @@ public class McpSyncServerExchange {
 	}
 
 	/**
-	 * Send a logging message notification to all connected clients. Messages below the
-	 * current minimum logging level will be filtered out.
+	 * Send a logging message notification to the client. Messages below the current
+	 * minimum logging level will be filtered out.
 	 * @param loggingMessageNotification The logging message to send
 	 */
 	public void loggingNotification(LoggingMessageNotification loggingMessageNotification) {
 		this.exchange.loggingNotification(loggingMessageNotification).block();
+	}
+
+	/**
+	 * Sends a notification to the client that the current progress status has changed for
+	 * long-running operations.
+	 * @param progressNotification The progress notification to send
+	 */
+	public void progressNotification(McpSchema.ProgressNotification progressNotification) {
+		this.exchange.progressNotification(progressNotification).block();
+	}
+
+	/**
+	 * Sends a synchronous ping request to the client.
+	 * @return
+	 */
+	public Object ping() {
+		return this.exchange.ping().block();
 	}
 
 }

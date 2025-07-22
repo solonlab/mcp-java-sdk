@@ -171,9 +171,13 @@ public interface McpClient {
 
 		private final List<Consumer<List<McpSchema.Resource>>> resourcesChangeConsumers = new ArrayList<>();
 
+		private final List<Consumer<List<McpSchema.ResourceContents>>> resourcesUpdateConsumers = new ArrayList<>();
+
 		private final List<Consumer<List<McpSchema.Prompt>>> promptsChangeConsumers = new ArrayList<>();
 
 		private final List<Consumer<McpSchema.LoggingMessageNotification>> loggingConsumers = new ArrayList<>();
+
+		private final List<Consumer<McpSchema.ProgressNotification>> progressConsumers = new ArrayList<>();
 
 		private Function<CreateMessageRequest, CreateMessageResult> samplingHandler;
 
@@ -376,14 +380,45 @@ public interface McpClient {
 		}
 
 		/**
+		 * Adds a consumer to be notified of progress notifications from the server. This
+		 * allows the client to track long-running operations and provide feedback to
+		 * users.
+		 * @param progressConsumer A consumer that receives progress notifications. Must
+		 * not be null.
+		 * @return This builder instance for method chaining
+		 * @throws IllegalArgumentException if progressConsumer is null
+		 */
+		public SyncSpec progressConsumer(Consumer<McpSchema.ProgressNotification> progressConsumer) {
+			Assert.notNull(progressConsumer, "Progress consumer must not be null");
+			this.progressConsumers.add(progressConsumer);
+			return this;
+		}
+
+		/**
+		 * Adds a multiple consumers to be notified of progress notifications from the
+		 * server. This allows the client to track long-running operations and provide
+		 * feedback to users.
+		 * @param progressConsumers A list of consumers that receives progress
+		 * notifications. Must not be null.
+		 * @return This builder instance for method chaining
+		 * @throws IllegalArgumentException if progressConsumer is null
+		 */
+		public SyncSpec progressConsumers(List<Consumer<McpSchema.ProgressNotification>> progressConsumers) {
+			Assert.notNull(progressConsumers, "Progress consumers must not be null");
+			this.progressConsumers.addAll(progressConsumers);
+			return this;
+		}
+
+		/**
 		 * Create an instance of {@link McpSyncClient} with the provided configurations or
 		 * sensible defaults.
 		 * @return a new instance of {@link McpSyncClient}.
 		 */
 		public McpSyncClient build() {
 			McpClientFeatures.Sync syncFeatures = new McpClientFeatures.Sync(this.clientInfo, this.capabilities,
-					this.roots, this.toolsChangeConsumers, this.resourcesChangeConsumers, this.promptsChangeConsumers,
-					this.loggingConsumers, this.samplingHandler, this.elicitationHandler);
+					this.roots, this.toolsChangeConsumers, this.resourcesChangeConsumers, this.resourcesUpdateConsumers,
+					this.promptsChangeConsumers, this.loggingConsumers, this.progressConsumers, this.samplingHandler,
+					this.elicitationHandler);
 
 			McpClientFeatures.Async asyncFeatures = McpClientFeatures.Async.fromSync(syncFeatures);
 
@@ -427,9 +462,13 @@ public interface McpClient {
 
 		private final List<Function<List<McpSchema.Resource>, Mono<Void>>> resourcesChangeConsumers = new ArrayList<>();
 
+		private final List<Function<List<McpSchema.ResourceContents>, Mono<Void>>> resourcesUpdateConsumers = new ArrayList<>();
+
 		private final List<Function<List<McpSchema.Prompt>, Mono<Void>>> promptsChangeConsumers = new ArrayList<>();
 
 		private final List<Function<McpSchema.LoggingMessageNotification, Mono<Void>>> loggingConsumers = new ArrayList<>();
+
+		private final List<Function<McpSchema.ProgressNotification, Mono<Void>>> progressConsumers = new ArrayList<>();
 
 		private Function<CreateMessageRequest, Mono<CreateMessageResult>> samplingHandler;
 
@@ -590,6 +629,23 @@ public interface McpClient {
 		}
 
 		/**
+		 * Adds a consumer to be notified when a specific resource is updated. This allows
+		 * the client to react to changes in individual resources, such as updates to
+		 * their content or metadata.
+		 * @param resourcesUpdateConsumer A consumer function that processes the updated
+		 * resource and returns a Mono indicating the completion of the processing. Must
+		 * not be null.
+		 * @return This builder instance for method chaining.
+		 * @throws IllegalArgumentException If the resourcesUpdateConsumer is null.
+		 */
+		public AsyncSpec resourcesUpdateConsumer(
+				Function<List<McpSchema.ResourceContents>, Mono<Void>> resourcesUpdateConsumer) {
+			Assert.notNull(resourcesUpdateConsumer, "Resources update consumer must not be null");
+			this.resourcesUpdateConsumers.add(resourcesUpdateConsumer);
+			return this;
+		}
+
+		/**
 		 * Adds a consumer to be notified when the available prompts change. This allows
 		 * the client to react to changes in the server's prompt templates, such as new
 		 * templates being added or existing ones being modified.
@@ -634,6 +690,37 @@ public interface McpClient {
 		}
 
 		/**
+		 * Adds a consumer to be notified of progress notifications from the server. This
+		 * allows the client to track long-running operations and provide feedback to
+		 * users.
+		 * @param progressConsumer A consumer that receives progress notifications. Must
+		 * not be null.
+		 * @return This builder instance for method chaining
+		 * @throws IllegalArgumentException if progressConsumer is null
+		 */
+		public AsyncSpec progressConsumer(Function<McpSchema.ProgressNotification, Mono<Void>> progressConsumer) {
+			Assert.notNull(progressConsumer, "Progress consumer must not be null");
+			this.progressConsumers.add(progressConsumer);
+			return this;
+		}
+
+		/**
+		 * Adds a multiple consumers to be notified of progress notifications from the
+		 * server. This allows the client to track long-running operations and provide
+		 * feedback to users.
+		 * @param progressConsumers A list of consumers that receives progress
+		 * notifications. Must not be null.
+		 * @return This builder instance for method chaining
+		 * @throws IllegalArgumentException if progressConsumer is null
+		 */
+		public AsyncSpec progressConsumers(
+				List<Function<McpSchema.ProgressNotification, Mono<Void>>> progressConsumers) {
+			Assert.notNull(progressConsumers, "Progress consumers must not be null");
+			this.progressConsumers.addAll(progressConsumers);
+			return this;
+		}
+
+		/**
 		 * Create an instance of {@link McpAsyncClient} with the provided configurations
 		 * or sensible defaults.
 		 * @return a new instance of {@link McpAsyncClient}.
@@ -641,8 +728,9 @@ public interface McpClient {
 		public McpAsyncClient build() {
 			return new McpAsyncClient(this.transport, this.requestTimeout, this.initializationTimeout,
 					new McpClientFeatures.Async(this.clientInfo, this.capabilities, this.roots,
-							this.toolsChangeConsumers, this.resourcesChangeConsumers, this.promptsChangeConsumers,
-							this.loggingConsumers, this.samplingHandler, this.elicitationHandler));
+							this.toolsChangeConsumers, this.resourcesChangeConsumers, this.resourcesUpdateConsumers,
+							this.promptsChangeConsumers, this.loggingConsumers, this.progressConsumers,
+							this.samplingHandler, this.elicitationHandler));
 		}
 
 	}

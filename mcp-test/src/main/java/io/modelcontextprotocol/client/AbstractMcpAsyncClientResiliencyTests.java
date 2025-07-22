@@ -1,3 +1,6 @@
+/*
+ * Copyright 2024-2024 the original author or authors.
+ */
 package io.modelcontextprotocol.client;
 
 import eu.rekawek.toxiproxy.Proxy;
@@ -76,7 +79,7 @@ public abstract class AbstractMcpAsyncClientResiliencyTests {
 		host = "http://" + ipAddressViaToxiproxy + ":" + portViaToxiproxy;
 	}
 
-	private static void disconnect() {
+	static void disconnect() {
 		long start = System.nanoTime();
 		try {
 			// disconnect
@@ -93,7 +96,7 @@ public abstract class AbstractMcpAsyncClientResiliencyTests {
 		}
 	}
 
-	private static void reconnect() {
+	static void reconnect() {
 		long start = System.nanoTime();
 		try {
 			proxy.toxics().get("RESET_UPSTREAM").remove();
@@ -107,7 +110,7 @@ public abstract class AbstractMcpAsyncClientResiliencyTests {
 		}
 	}
 
-	private static void restartMcpServer() {
+	static void restartMcpServer() {
 		container.stop();
 		container.start();
 	}
