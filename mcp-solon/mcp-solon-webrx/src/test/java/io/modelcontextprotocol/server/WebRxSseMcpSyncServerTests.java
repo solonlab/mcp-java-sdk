@@ -26,7 +26,11 @@ class WebRxSseMcpSyncServerTests extends AbstractMcpSyncServerTests {
 	private WebRxSseServerTransportProvider transportProvider;
 
 	@Override
-	protected McpServerTransportProvider createMcpTransportProvider() {
+	protected McpServer.SyncSpecification<?> prepareSyncServerBuilder() {
+		return McpServer.sync(createMcpTransportProvider());
+	}
+
+	private McpServerTransportProvider createMcpTransportProvider() {
 		transportProvider = new WebRxSseServerTransportProvider.Builder()
 				.objectMapper(new ObjectMapper())
 				.messageEndpoint(MESSAGE_ENDPOINT)
