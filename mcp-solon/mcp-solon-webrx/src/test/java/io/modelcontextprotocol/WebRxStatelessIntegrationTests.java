@@ -1,14 +1,15 @@
 /*
  * Copyright 2024 - 2024 the original author or authors.
  */
-package io.modelcontextprotocol.server;
+package io.modelcontextprotocol;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.AbstractStatelessIntegrationTests;
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
+import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServer.StatelessAsyncSpecification;
 import io.modelcontextprotocol.server.McpServer.StatelessSyncSpecification;
+import io.modelcontextprotocol.server.TestUtil;
 import io.modelcontextprotocol.server.transport.WebRxStatelessServerTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.AfterEach;

@@ -11,8 +11,8 @@
 	</parent>
 	<artifactId>mcp-solon-webrx</artifactId>
 	<packaging>jar</packaging>
-	<name>Solon WebRx implementation of the Java MCP SSE transport</name>
-	<description></description>
+	<name>Solon WebRx transports</name>
+	<description>Solon WebRx implementation of the Java MCP SSE transport</description>
 	<url>https://github.com/modelcontextprotocol/java-sdk</url>
 
 	<scm>
