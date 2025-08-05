@@ -1,6 +1,7 @@
 /*
  * Copyright 2024-2024 the original author or authors.
  */
+
 package io.modelcontextprotocol.client;
 
 import java.time.Duration;
@@ -271,9 +272,9 @@ public class McpAsyncClient {
 		notificationHandlers.put(McpSchema.METHOD_NOTIFICATION_PROGRESS,
 				asyncProgressNotificationHandler(progressConsumersFinal));
 
-		this.initializer = new LifecycleInitializer(clientCapabilities, clientInfo,
-				List.of(transport.protocolVersion()), initializationTimeout, ctx -> new McpClientSession(requestTimeout,
-						transport, requestHandlers, notificationHandlers, con -> con.contextWrite(ctx)));
+		this.initializer = new LifecycleInitializer(clientCapabilities, clientInfo, transport.protocolVersions(),
+				initializationTimeout, ctx -> new McpClientSession(requestTimeout, transport, requestHandlers,
+						notificationHandlers, con -> con.contextWrite(ctx)));
 		this.transport.setExceptionHandler(this.initializer::handleException);
 	}
 
