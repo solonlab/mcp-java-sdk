@@ -1,3 +1,6 @@
+/*
+ * Copyright 2025-2025 the original author or authors.
+ */
 package io.modelcontextprotocol.client.transport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -50,6 +53,7 @@ import java.util.function.Function;
  * </p>
  *
  * @author Dariusz Jędrzejczyk
+ * @author noear
  * @see <a href=
  * "https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#streamable-http">Streamable
  * HTTP transport specification</a>
@@ -58,7 +62,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 
 	private static final Logger logger = LoggerFactory.getLogger(WebRxStreamableHttpTransport.class);
 
-	private static final String MCP_PROTOCOL_VERSION = "2025-03-26";
+	private static final String MCP_PROTOCOL_VERSION = ProtocolVersions.MCP_2025_03_26;
 
 	private static final String DEFAULT_ENDPOINT = "/mcp";
 
