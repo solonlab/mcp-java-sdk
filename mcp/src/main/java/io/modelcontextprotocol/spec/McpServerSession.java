@@ -1,3 +1,7 @@
+/*
+ * Copyright 2024-2025 the original author or authors.
+ */
+
 package io.modelcontextprotocol.spec;
 
 import java.time.Duration;
@@ -21,7 +25,7 @@ import reactor.core.publisher.MonoSink;
 import reactor.core.publisher.Sinks;
 
 /**
- * Represents a Model Control Protocol (MCP) session on the server side. It manages
+ * Represents a Model Context Protocol (MCP) session on the server side. It manages
  * bidirectional JSON-RPC communication with the client.
  */
 public class McpServerSession implements McpLoggableSession {

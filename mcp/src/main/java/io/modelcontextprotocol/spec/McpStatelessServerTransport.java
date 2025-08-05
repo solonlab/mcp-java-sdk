@@ -1,4 +1,10 @@
+/*
+ * Copyright 2024-2025 the original author or authors.
+ */
+
 package io.modelcontextprotocol.spec;
+
+import java.util.List;
 
 import io.modelcontextprotocol.server.McpStatelessServerHandler;
 import reactor.core.publisher.Mono;
@@ -22,8 +28,8 @@ public interface McpStatelessServerTransport {
 	 */
 	Mono<Void> closeGracefully();
 
-	default String protocolVersion() {
-		return "2025-03-26";
+	default List<String> protocolVersions() {
+		return List.of(ProtocolVersions.MCP_2025_03_26);
 	}
 
 }

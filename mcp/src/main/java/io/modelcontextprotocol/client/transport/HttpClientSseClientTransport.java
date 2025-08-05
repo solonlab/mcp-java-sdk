@@ -1,6 +1,7 @@
 /*
  * Copyright 2024 - 2025 the original author or authors.
  */
+
 package io.modelcontextprotocol.client.transport;
 
 import java.io.IOException;
@@ -9,6 +10,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -24,6 +26,7 @@ import io.modelcontextprotocol.client.transport.ResponseSubscribers.ResponseEven
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
+import io.modelcontextprotocol.spec.ProtocolVersions;
 import io.modelcontextprotocol.spec.McpSchema.JSONRPCMessage;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.Utils;
@@ -61,7 +64,7 @@ import reactor.core.publisher.Sinks;
  */
 public class HttpClientSseClientTransport implements McpClientTransport {
 
-	private static final String MCP_PROTOCOL_VERSION = "2024-11-05";
+	private static final String MCP_PROTOCOL_VERSION = ProtocolVersions.MCP_2024_11_05;
 
 	private static final String MCP_PROTOCOL_VERSION_HEADER_NAME = "MCP-Protocol-Version";
 
@@ -216,8 +219,8 @@ public class HttpClientSseClientTransport implements McpClientTransport {
 	}
 
 	@Override
-	public String protocolVersion() {
-		return MCP_PROTOCOL_VERSION;
+	public List<String> protocolVersions() {
+		return List.of(ProtocolVersions.MCP_2024_11_05);
 	}
 
 	/**
