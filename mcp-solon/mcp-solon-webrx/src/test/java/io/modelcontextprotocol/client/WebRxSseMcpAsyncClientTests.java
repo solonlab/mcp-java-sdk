@@ -14,7 +14,7 @@ import org.testcontainers.containers.wait.strategy.Wait;
 import java.time.Duration;
 
 /**
- * Tests for the {@link McpAsyncClient} with {@link WebRxSseClientTransport}.
+ * Tests for the {@link McpAsyncClient} with {@link WebRxSseMcpAsyncClientTests}.
  *
  * @author Christian Tzolov
  */
@@ -25,7 +25,8 @@ class WebRxSseMcpAsyncClientTests extends AbstractMcpAsyncClientTests {
 
 	// Uses the https://github.com/tzolov/mcp-everything-server-docker-image
 	@SuppressWarnings("resource")
-	GenericContainer<?> container = new GenericContainer<>("docker.io/tzolov/mcp-everything-server:v1")
+	GenericContainer<?> container = new GenericContainer<>("docker.io/tzolov/mcp-everything-server:v2")
+		.withCommand("node dist/index.js sse")
 		.withLogConsumer(outputFrame -> System.out.println(outputFrame.getUtf8String()))
 		.withExposedPorts(3001)
 		.waitingFor(Wait.forHttp("/").forStatusCode(404));
