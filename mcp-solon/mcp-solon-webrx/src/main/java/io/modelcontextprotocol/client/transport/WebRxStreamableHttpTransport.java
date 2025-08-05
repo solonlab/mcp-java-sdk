@@ -8,6 +8,7 @@ import io.modelcontextprotocol.util.Utils;
 import org.noear.solon.core.handle.StatusCodes;
 import org.noear.solon.core.util.MimeType;
 import org.noear.solon.net.http.HttpResponse;
+import org.noear.solon.net.http.HttpResponseException;
 import org.noear.solon.net.http.HttpUtils;
 import org.noear.solon.net.http.HttpUtilsBuilder;
 import org.noear.solon.net.http.textstream.ServerSentEvent;
@@ -212,13 +213,9 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 							return mcpSessionNotFoundError(sessionIdRepresentation);
 						} else {
 							//todo: createError
-							try {
-								McpSchema.JSONRPCMessage message = response.bodyAsBean(McpSchema.JSONRPCMessage.class);
-								return Mono.just(message);
-							} catch (Throwable e) {
+							return Flux.<McpSchema.JSONRPCMessage>error(response.createError()).doOnError(e -> {
 								logger.info("Opening an SSE stream failed. This can be safely ignored.", e);
-								return Mono.empty();
-							}
+							});
 						}
 					})
 					.flatMap(jsonrpcMessage -> this.handler.get().apply(Mono.just(jsonrpcMessage)))
@@ -253,14 +250,22 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 			final AtomicReference<Disposable> disposableRef = new AtomicReference<>();
 			final McpTransportSession<Disposable> transportSession = this.activeSession.get();
 
+			String messageJsonStr = null;
+
+			try {
+				messageJsonStr = objectMapper.writeValueAsString(message);
+			}catch (Exception e) {
+				sink.error(e);
+				return;
+			}
 
 			Disposable connection = Mono.fromFuture(webClientBuilder.build(this.endpoint)
-							.accept(MimeType.APPLICATION_JSON_VALUE + "," + MimeType.TEXT_EVENT_STREAM_VALUE)
+							.accept(MimeType.APPLICATION_JSON_VALUE + ", " + MimeType.TEXT_EVENT_STREAM_VALUE)
 							.header(HttpHeaders.PROTOCOL_VERSION, MCP_PROTOCOL_VERSION)
 							.fill(http -> {
 								transportSession.sessionId().ifPresent(id -> http.header(HttpHeaders.MCP_SESSION_ID, id));
 							})
-							.bodyOfBean(message).execAsync("POST")).flatMapMany(response -> {
+							.bodyOfJson(messageJsonStr).execAsync("POST")).flatMapMany(response -> {
 						if (transportSession
 								.markInitialized(response.header(HttpHeaders.MCP_SESSION_ID))) {
 							// Once we have a session, we try to open an async stream for
@@ -338,32 +343,36 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 
 	private Flux<McpSchema.JSONRPCMessage> extractError(HttpResponse response, String sessionRepresentation) {
 		//todo: createError
-		try {
-			byte[] body = response.bodyAsBytes();
-			McpSchema.JSONRPCResponse.JSONRPCError jsonRpcError = null;
-			Exception toPropagate;
+		return Flux.<McpSchema.JSONRPCMessage>defer(() -> {
 			try {
-				McpSchema.JSONRPCResponse jsonRpcResponse = objectMapper.readValue(body,
-						McpSchema.JSONRPCResponse.class);
-				jsonRpcError = jsonRpcResponse.error();
-				toPropagate = jsonRpcError != null ? new McpError(jsonRpcError)
-						: new McpError("Can't parse the jsonResponse " + jsonRpcResponse);
-			} catch (IOException ex) {
-				toPropagate = new RuntimeException("Sending request failed");
-				logger.debug("Received content together with {} HTTP code response: {}", response.code(), body);
-			}
+				HttpResponseException e = response.createError();
+				byte[] body = e.bodyBytes();
 
-			// Some implementations can return 400 when presented with a
-			// session id that it doesn't know about, so we will
-			// invalidate the session
-			// https://github.com/modelcontextprotocol/typescript-sdk/issues/389
-			if (response.code() == StatusCodes.CODE_BAD_REQUEST) {
-				return Flux.error(new McpTransportSessionNotFoundException(sessionRepresentation, toPropagate));
+				McpSchema.JSONRPCResponse.JSONRPCError jsonRpcError = null;
+				Exception toPropagate;
+				try {
+					McpSchema.JSONRPCResponse jsonRpcResponse = objectMapper.readValue(body,
+							McpSchema.JSONRPCResponse.class);
+					jsonRpcError = jsonRpcResponse.error();
+					toPropagate = jsonRpcError != null ? new McpError(jsonRpcError)
+							: new McpError("Can't parse the jsonResponse " + jsonRpcResponse);
+				} catch (IOException ex) {
+					toPropagate = new RuntimeException("Sending request failed", e);
+					logger.debug("Received content together with {} HTTP code response: {}", e.code(), body);
+				}
+
+				// Some implementations can return 400 when presented with a
+				// session id that it doesn't know about, so we will
+				// invalidate the session
+				// https://github.com/modelcontextprotocol/typescript-sdk/issues/389
+				if (e.code() == StatusCodes.CODE_BAD_REQUEST) {
+					return Flux.error(new McpTransportSessionNotFoundException(sessionRepresentation, toPropagate));
+				}
+				return Flux.error(toPropagate);
+			} catch (Exception ex) {
+				return Flux.error(ex);
 			}
-			return Flux.error(toPropagate);
-		} catch (Exception e) {
-			return Flux.error(e);
-		}
+		});
 	}
 
 	private Flux<McpSchema.JSONRPCMessage> eventStream(McpTransportStream<Disposable> stream, HttpResponse response) {
@@ -466,7 +475,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 		private boolean openConnectionOnStartup = false;
 
 		private Builder(HttpUtilsBuilder webClientBuilder) {
-			Assert.notNull(webClientBuilder, "WebClient.Builder must not be null");
+			Assert.notNull(webClientBuilder, "HttpUtilsBuilder must not be null");
 			this.webClientBuilder = webClientBuilder;
 		}
 
@@ -487,7 +496,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 		 * @return the builder instance
 		 */
 		public Builder webClientBuilder(HttpUtilsBuilder webClientBuilder) {
-			Assert.notNull(webClientBuilder, "WebClient.Builder must not be null");
+			Assert.notNull(webClientBuilder, "HttpUtilsBuilder must not be null");
 			this.webClientBuilder = webClientBuilder;
 			return this;
 		}
