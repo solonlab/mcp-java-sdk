@@ -21,6 +21,7 @@ import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -174,6 +175,11 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 
 	public String getMessageEndpoint() {
 		return messageEndpoint;
+	}
+
+	@Override
+	public List<String> protocolVersions() {
+		return List.of(ProtocolVersions.MCP_2024_11_05);
 	}
 
 	@Override

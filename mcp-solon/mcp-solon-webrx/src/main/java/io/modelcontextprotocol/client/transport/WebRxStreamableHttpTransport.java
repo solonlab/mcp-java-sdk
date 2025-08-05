@@ -95,8 +95,8 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 	}
 
 	@Override
-	public String protocolVersion() {
-		return MCP_PROTOCOL_VERSION;
+	public List<String> protocolVersions() {
+		return List.of(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26);
 	}
 
 	/**

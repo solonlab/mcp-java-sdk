@@ -9,6 +9,7 @@ import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpSchema.JSONRPCMessage;
+import io.modelcontextprotocol.spec.ProtocolVersions;
 import io.modelcontextprotocol.util.Assert;
 import org.noear.solon.net.http.HttpResponse;
 import org.noear.solon.net.http.HttpUtilsBuilder;
@@ -19,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -118,70 +120,15 @@ public class WebRxSseClientTransport implements McpClientTransport {
 		Assert.notNull(objectMapper, "ObjectMapper must not be null");
 		Assert.notNull(webBuilder, "baseUri must not be empty");
 		Assert.hasText(sseEndpoint, "sseEndpoint must not be empty");
+
 		this.webBuilder = webBuilder;
 		this.sseEndpoint = sseEndpoint;
 		this.objectMapper = objectMapper;
 	}
 
-	/**
-	 * Creates a new builder for {@link WebRxSseClientTransport}.
-	 * @param webBuilder the HttpUtilsBuilder to use for creating the HttpUtils instance
-	 * @return a new builder instance
-	 */
-	public static Builder builder(HttpUtilsBuilder webBuilder) {
-		return new Builder(webBuilder);
-	}
-
-	/**
-	 * Builder for {@link WebRxSseClientTransport}.
-	 */
-	public static class Builder {
-
-		private final HttpUtilsBuilder webBuilder;
-
-		private String sseEndpoint = DEFAULT_SSE_ENDPOINT;
-
-		private ObjectMapper objectMapper = new ObjectMapper();
-
-		/**
-		 * Creates a new builder with the specified base URI.
-		 * @param webBuilder the HttpUtilsBuilder to use for creating the HttpUtils instance
-		 */
-		public Builder(HttpUtilsBuilder webBuilder) {
-			Assert.notNull(webBuilder, "webBuilder must not be empty");
-			this.webBuilder = webBuilder;
-		}
-
-		/**
-		 * Sets the SSE endpoint path.
-		 * @param sseEndpoint the SSE endpoint path
-		 * @return this builder
-		 */
-		public Builder sseEndpoint(String sseEndpoint) {
-			Assert.hasText(sseEndpoint, "sseEndpoint must not be null");
-			this.sseEndpoint = sseEndpoint;
-			return this;
-		}
-
-		/**
-		 * Sets the object mapper for JSON serialization/deserialization.
-		 * @param objectMapper the object mapper
-		 * @return this builder
-		 */
-		public Builder objectMapper(ObjectMapper objectMapper) {
-			Assert.notNull(objectMapper, "objectMapper must not be null");
-			this.objectMapper = objectMapper;
-			return this;
-		}
-
-		/**
-		 * Builds a new {@link WebRxSseClientTransport} instance.
-		 * @return a new transport instance
-		 */
-		public WebRxSseClientTransport build() {
-			return new WebRxSseClientTransport(webBuilder, sseEndpoint, objectMapper);
-		}
-
+	@Override
+	public List<String> protocolVersions() {
+		return List.of(ProtocolVersions.MCP_2024_11_05);
 	}
 
 	/**
@@ -315,5 +262,66 @@ public class WebRxSseClientTransport implements McpClientTransport {
 	@Override
 	public <T> T unmarshalFrom(Object data, TypeReference<T> typeRef) {
 		return this.objectMapper.convertValue(data, typeRef);
+	}
+
+	/**
+	 * Creates a new builder for {@link WebRxSseClientTransport}.
+	 * @param webBuilder the HttpUtilsBuilder to use for creating the HttpUtils instance
+	 * @return a new builder instance
+	 */
+	public static Builder builder(HttpUtilsBuilder webBuilder) {
+		return new Builder(webBuilder);
+	}
+
+	/**
+	 * Builder for {@link WebRxSseClientTransport}.
+	 */
+	public static class Builder {
+
+		private final HttpUtilsBuilder webBuilder;
+
+		private String sseEndpoint = DEFAULT_SSE_ENDPOINT;
+
+		private ObjectMapper objectMapper = new ObjectMapper();
+
+		/**
+		 * Creates a new builder with the specified base URI.
+		 * @param webBuilder the HttpUtilsBuilder to use for creating the HttpUtils instance
+		 */
+		public Builder(HttpUtilsBuilder webBuilder) {
+			Assert.notNull(webBuilder, "webBuilder must not be empty");
+			this.webBuilder = webBuilder;
+		}
+
+		/**
+		 * Sets the SSE endpoint path.
+		 * @param sseEndpoint the SSE endpoint path
+		 * @return this builder
+		 */
+		public Builder sseEndpoint(String sseEndpoint) {
+			Assert.hasText(sseEndpoint, "sseEndpoint must not be null");
+			this.sseEndpoint = sseEndpoint;
+			return this;
+		}
+
+		/**
+		 * Sets the object mapper for JSON serialization/deserialization.
+		 * @param objectMapper the object mapper
+		 * @return this builder
+		 */
+		public Builder objectMapper(ObjectMapper objectMapper) {
+			Assert.notNull(objectMapper, "objectMapper must not be null");
+			this.objectMapper = objectMapper;
+			return this;
+		}
+
+		/**
+		 * Builds a new {@link WebRxSseClientTransport} instance.
+		 * @return a new transport instance
+		 */
+		public WebRxSseClientTransport build() {
+			return new WebRxSseClientTransport(webBuilder, sseEndpoint, objectMapper);
+		}
+
 	}
 }

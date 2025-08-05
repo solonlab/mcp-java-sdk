@@ -8,6 +8,7 @@ import io.modelcontextprotocol.server.McpTransportContextExtractor;
 import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStatelessServerTransport;
+import io.modelcontextprotocol.spec.ProtocolVersions;
 import io.modelcontextprotocol.util.Assert;
 import org.noear.solon.SolonApp;
 import org.noear.solon.core.handle.Context;
@@ -19,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Implementation of a WebMVC based {@link McpStatelessServerTransport}.
@@ -60,6 +62,11 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 
 	public String getMcpEndpoint() {
 		return mcpEndpoint;
+	}
+
+	@Override
+	public List<String> protocolVersions() {
+		return List.of(ProtocolVersions.MCP_2025_03_26);
 	}
 
 	@Override
