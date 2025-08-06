@@ -869,6 +869,9 @@ public class McpAsyncClient {
 		}
 
 		return this.initializer.withIntitialization("setting logging level", init -> {
+			if (init.initializeResult().capabilities().logging() == null) {
+				return Mono.error(new IllegalStateException("Server's Logging capabilities are not enabled!"));
+			}
 			var params = new McpSchema.SetLevelRequest(loggingLevel);
 			return init.mcpSession().sendRequest(McpSchema.METHOD_LOGGING_SET_LEVEL, params, OBJECT_TYPE_REF).then();
 		});

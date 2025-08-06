@@ -950,7 +950,7 @@ public abstract class AbstractMcpClientServerIntegrationTests {
 		List<McpSchema.LoggingMessageNotification> receivedNotifications = new CopyOnWriteArrayList<>();
 
 		var clientBuilder = clientBuilders.get(clientType);
-		;
+
 		// Create server with a tool that sends logging notifications
 		McpServerFeatures.AsyncToolSpecification tool = McpServerFeatures.AsyncToolSpecification.builder()
 			.tool(Tool.builder()
@@ -999,7 +999,7 @@ public abstract class AbstractMcpClientServerIntegrationTests {
 			.build();
 
 		var mcpServer = prepareAsyncServerBuilder().serverInfo("test-server", "1.0.0")
-			.capabilities(ServerCapabilities.builder().logging().tools(true).build())
+			.capabilities(ServerCapabilities.builder().tools(true).build())
 			.tools(tool)
 			.build();
 
