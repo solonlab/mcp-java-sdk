@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 /**
- * Tests for the {@link HttpClientSseClientTransport} class.
+ * Tests for the {@link WebRxSseClientTransport} class.
  *
  * @author Christian Tzolov
  */
