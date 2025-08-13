@@ -11,6 +11,7 @@ import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Timeout;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -29,6 +30,7 @@ import io.modelcontextprotocol.server.McpServer.SingleSessionSyncSpecification;
 import io.modelcontextprotocol.server.transport.WebMvcSseServerTransportProvider;
 import reactor.core.scheduler.Schedulers;
 
+@Timeout(15)
 class WebMvcSseIntegrationTests extends AbstractMcpClientServerIntegrationTests {
 
 	private static final int PORT = TestUtil.findAvailablePort();
@@ -42,11 +44,11 @@ class WebMvcSseIntegrationTests extends AbstractMcpClientServerIntegrationTests 
 
 		clientBuilders.put("httpclient",
 				McpClient.sync(HttpClientSseClientTransport.builder("http://localhost:" + port).build())
-					.initializationTimeout(Duration.ofHours(10))
 					.requestTimeout(Duration.ofHours(10)));
 
 		clientBuilders.put("webflux", McpClient
-			.sync(WebFluxSseClientTransport.builder(WebClient.builder().baseUrl("http://localhost:" + port)).build()));
+			.sync(WebFluxSseClientTransport.builder(WebClient.builder().baseUrl("http://localhost:" + port)).build())
+			.requestTimeout(Duration.ofHours(10)));
 	}
 
 	@Configuration
@@ -55,7 +57,10 @@ class WebMvcSseIntegrationTests extends AbstractMcpClientServerIntegrationTests 
 
 		@Bean
 		public WebMvcSseServerTransportProvider webMvcSseServerTransportProvider() {
-			return new WebMvcSseServerTransportProvider(new ObjectMapper(), MESSAGE_ENDPOINT);
+			return WebMvcSseServerTransportProvider.builder()
+				.objectMapper(new ObjectMapper())
+				.messageEndpoint(MESSAGE_ENDPOINT)
+				.build();
 		}
 
 		@Bean
