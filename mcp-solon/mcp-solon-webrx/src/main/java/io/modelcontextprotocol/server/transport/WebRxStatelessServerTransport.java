@@ -10,6 +10,7 @@ import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStatelessServerTransport;
 import io.modelcontextprotocol.spec.ProtocolVersions;
 import io.modelcontextprotocol.util.Assert;
+import io.modelcontextprotocol.util.Utils;
 import org.noear.solon.SolonApp;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Entity;
@@ -20,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -29,7 +31,7 @@ import java.util.List;
  * @author noear
  * @see McpStatelessServerTransport
  */
-public class WebRxStatelessServerTransport implements McpStatelessServerTransport {
+public class WebRxStatelessServerTransport implements McpStatelessServerTransport, IMcpHttpServerTransport {
 
 	private static final Logger logger = LoggerFactory.getLogger(WebRxStatelessServerTransport.class);
 
@@ -54,6 +56,7 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 		this.contextExtractor = contextExtractor;
 	}
 
+	@Override
 	public void toHttpHandler(SolonApp app) {
 		if (app != null) {
 			app.get(this.mcpEndpoint, this::handleGet);
@@ -61,13 +64,14 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 		}
 	}
 
+	@Override
 	public String getMcpEndpoint() {
 		return mcpEndpoint;
 	}
 
 	@Override
 	public List<String> protocolVersions() {
-		return List.of(ProtocolVersions.MCP_2025_03_26);
+		return Arrays.asList(ProtocolVersions.MCP_2025_03_26);
 	}
 
 	@Override
@@ -119,7 +123,9 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 			String body = request.body();
 			McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(objectMapper, body);
 
-			if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest) {
+			if (message instanceof McpSchema.JSONRPCRequest) {
+				McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest) message;
+
 				try {
 					McpSchema.JSONRPCResponse jsonrpcResponse = this.mcpHandler
 						.handleRequest(transportContext, jsonrpcRequest)
@@ -133,7 +139,9 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 						.body(new McpError("Failed to handle request: " + e.getMessage()));
 				}
 			}
-			else if (message instanceof McpSchema.JSONRPCNotification jsonrpcNotification) {
+			else if (message instanceof McpSchema.JSONRPCNotification) {
+				McpSchema.JSONRPCNotification jsonrpcNotification = (McpSchema.JSONRPCNotification) message;
+
 				try {
 					this.mcpHandler.handleNotification(transportContext, jsonrpcNotification)
 						.contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext))
@@ -182,7 +190,10 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 
 		private String mcpEndpoint = "/mcp";
 
-		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest, context) -> context;
+		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest, context) -> {
+			context.put(Context.class.getName(), serverRequest);
+			return context;
+		};
 
 		private Builder() {
 			// used by a static method

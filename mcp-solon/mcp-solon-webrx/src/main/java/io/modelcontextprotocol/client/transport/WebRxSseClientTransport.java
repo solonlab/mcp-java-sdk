@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.spec.*;
 import io.modelcontextprotocol.spec.McpSchema.JSONRPCMessage;
 import io.modelcontextprotocol.util.Assert;
+import io.modelcontextprotocol.util.Utils;
 import org.noear.solon.core.util.MimeType;
 import org.noear.solon.net.http.HttpUtilsBuilder;
 import org.noear.solon.net.http.textstream.ServerSentEvent;
@@ -24,13 +25,14 @@ import reactor.util.retry.Retry;
 import reactor.util.retry.Retry.RetrySignal;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 
 /**
  * Server-Sent Events (SSE) implementation of the
- * {@link io.modelcontextprotocol.spec.McpTransport} that follows the MCP HTTP with SSE
+ * {@link McpTransport} that follows the MCP HTTP with SSE
  * transport specification.
  *
  * <p>
@@ -163,7 +165,7 @@ public class WebRxSseClientTransport implements McpClientTransport {
 
 	@Override
 	public List<String> protocolVersions() {
-		return List.of(MCP_PROTOCOL_VERSION);
+		return Arrays.asList(MCP_PROTOCOL_VERSION);
 	}
 
 	/**

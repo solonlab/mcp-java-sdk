@@ -6,9 +6,13 @@ package io.modelcontextprotocol.server.transport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.server.DefaultMcpTransportContext;
+import io.modelcontextprotocol.server.McpTransportContext;
+import io.modelcontextprotocol.server.McpTransportContextExtractor;
 import io.modelcontextprotocol.spec.*;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.KeepAliveScheduler;
+import io.modelcontextprotocol.util.Utils;
 import org.noear.solon.SolonApp;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Entity;
@@ -22,6 +26,7 @@ import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,7 +69,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * @see McpServerTransportProvider
  * @see org.noear.solon.core.handle.Handler
  */
-public class WebRxSseServerTransportProvider implements McpServerTransportProvider {
+public class WebRxSseServerTransportProvider implements McpServerTransportProvider, IMcpHttpServerTransport {
 
 	private static final Logger logger = LoggerFactory.getLogger(WebRxSseServerTransportProvider.class);
 
@@ -97,6 +102,9 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 	 * Map of active client sessions, keyed by session ID.
 	 */
 	private final ConcurrentHashMap<String, McpServerSession> sessions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Context> sessionRequests = new ConcurrentHashMap<>();
+
+    private McpTransportContextExtractor<Context> contextExtractor;
 
 	/**
 	 * Flag indicating if the transport is shutting down.
@@ -104,60 +112,6 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 	private volatile boolean isClosing = false;
 
 	private KeepAliveScheduler keepAliveScheduler;
-
-	/**
-	 * Constructs a new WebMvcSseServerTransportProvider instance with the default SSE
-	 * endpoint.
-	 * @param objectMapper The ObjectMapper to use for JSON serialization/deserialization
-	 * of messages.
-	 * @param messageEndpoint The endpoint URI where clients should send their JSON-RPC
-	 * messages via HTTP POST. This endpoint will be communicated to clients through the
-	 * SSE connection's initial endpoint event.
-	 * @throws IllegalArgumentException if either objectMapper or messageEndpoint is null
-	 * @deprecated Use the builder {@link #builder()} instead for better configuration
-	 * options.
-	 */
-	@Deprecated
-	public WebRxSseServerTransportProvider(ObjectMapper objectMapper, String messageEndpoint) {
-		this(objectMapper, messageEndpoint, DEFAULT_SSE_ENDPOINT);
-	}
-
-	/**
-	 * Constructs a new WebMvcSseServerTransportProvider instance.
-	 * @param objectMapper The ObjectMapper to use for JSON serialization/deserialization
-	 * of messages.
-	 * @param messageEndpoint The endpoint URI where clients should send their JSON-RPC
-	 * messages via HTTP POST. This endpoint will be communicated to clients through the
-	 * SSE connection's initial endpoint event.
-	 * @param sseEndpoint The endpoint URI where clients establish their SSE connections.
-	 * @throws IllegalArgumentException if any parameter is null
-	 * @deprecated Use the builder {@link #builder()} instead for better configuration
-	 * options.
-	 */
-	@Deprecated
-	public WebRxSseServerTransportProvider(ObjectMapper objectMapper, String messageEndpoint, String sseEndpoint) {
-		this(objectMapper, "", messageEndpoint, sseEndpoint);
-	}
-
-	/**
-	 * Constructs a new WebMvcSseServerTransportProvider instance.
-	 * @param objectMapper The ObjectMapper to use for JSON serialization/deserialization
-	 * of messages.
-	 * @param baseUrl The base URL for the message endpoint, used to construct the full
-	 * endpoint URL for clients.
-	 * @param messageEndpoint The endpoint URI where clients should send their JSON-RPC
-	 * messages via HTTP POST. This endpoint will be communicated to clients through the
-	 * SSE connection's initial endpoint event.
-	 * @param sseEndpoint The endpoint URI where clients establish their SSE connections.
-	 * @throws IllegalArgumentException if any parameter is null
-	 * @deprecated Use the builder {@link #builder()} instead for better configuration
-	 * options.
-	 */
-	@Deprecated
-	public WebRxSseServerTransportProvider(ObjectMapper objectMapper, String baseUrl, String messageEndpoint,
-										   String sseEndpoint) {
-		this(objectMapper, baseUrl, messageEndpoint, sseEndpoint, null);
-	}
 
 	/**
 	 * Constructs a new WebMvcSseServerTransportProvider instance.
@@ -176,7 +130,9 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 	 */
 	@Deprecated
 	public WebRxSseServerTransportProvider(ObjectMapper objectMapper, String baseUrl, String messageEndpoint,
-										   String sseEndpoint, Duration keepAliveInterval) {
+										   String sseEndpoint,
+                                           McpTransportContextExtractor<Context> contextExtractor,
+                                           Duration keepAliveInterval) {
 		Assert.notNull(objectMapper, "ObjectMapper must not be null");
 		Assert.notNull(baseUrl, "Message base URL must not be null");
 		Assert.notNull(messageEndpoint, "Message endpoint must not be null");
@@ -186,6 +142,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 		this.baseUrl = baseUrl;
 		this.messageEndpoint = messageEndpoint;
 		this.sseEndpoint = sseEndpoint;
+        this.contextExtractor = contextExtractor;
 
 		if (keepAliveInterval != null) {
 
@@ -199,6 +156,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 		}
 	}
 
+	@Override
 	public void toHttpHandler(SolonApp app) {
 		if (app != null) {
 			app.get(this.sseEndpoint, this::handleSseConnection);
@@ -207,8 +165,13 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 	}
 
 	@Override
+	public String getMcpEndpoint() {
+		return sseEndpoint;
+	}
+
+	@Override
 	public List<String> protocolVersions() {
-		return List.of(ProtocolVersions.MCP_2024_11_05);
+		return Arrays.asList(ProtocolVersions.MCP_2024_11_05);
 	}
 
 	@Override
@@ -312,16 +275,19 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 			sseBuilder.onCompletion(() -> {
 				logger.debug("SSE connection completed for session: {}", sessionId);
 				sessions.remove(sessionId);
+                sessionRequests.remove(sessionId);
 			});
 			sseBuilder.onTimeout(() -> {
 				logger.debug("SSE connection timed out for session: {}", sessionId);
 				sessions.remove(sessionId);
+                sessionRequests.remove(sessionId);
 			});
 
 			sseBuilder.onInited(emitter -> {
 				WebRxMcpSessionTransport sessionTransport = new WebRxMcpSessionTransport(sessionId, sseBuilder);
 				McpServerSession session = sessionFactory.create(sessionTransport);
 				this.sessions.put(sessionId, session);
+                this.sessionRequests.put(sessionId, request);
 
 				try {
 					sseBuilder.send(new SseEvent().id(sessionId)
@@ -338,6 +304,8 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 		catch (Exception e) {
 			logger.error("Failed to send initial endpoint event to session {}: {}", sessionId, e.getMessage());
 			sessions.remove(sessionId);
+            sessionRequests.remove(sessionId);
+
 			return new Entity().status(StatusCodes.CODE_INTERNAL_SERVER_ERROR);
 		}
 	}
@@ -385,12 +353,17 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 			return new Entity().status(StatusCodes.CODE_NOT_FOUND).body(new McpError("Session not found: " + sessionId));
 		}
 
+        Context sessionRequest = this.sessionRequests.get(sessionId);
+        McpTransportContext transportContext = this.contextExtractor.extract(sessionRequest, new DefaultMcpTransportContext());
+
 		try {
 			String body = request.body();
 			McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(objectMapper, body);
 
 			// Process the message through the session's handle method
-			session.handle(message).block(); // Block for WebMVC compatibility
+			session.handle(message)
+                    .contextWrite(ctx->ctx.put(McpTransportContext.KEY,transportContext))
+                    .block(); // Block for WebMVC compatibility
 
 			return new Entity().status(StatusCodes.CODE_OK);
 		}
@@ -428,6 +401,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 		WebRxMcpSessionTransport(String sessionId, SseEmitter sseBuilder) {
 			this.sessionId = sessionId;
 			this.sseBuilder = sseBuilder;
+
 			logger.debug("Session transport {} initialized with SSE builder", sessionId);
 		}
 
@@ -534,6 +508,11 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 
 		private String sseEndpoint = DEFAULT_SSE_ENDPOINT;
 
+        private McpTransportContextExtractor<Context> contextExtractor = (serverRequest, context) -> {
+            context.put(Context.class.getName(), serverRequest);
+            return context;
+        };
+
 		private Duration keepAliveInterval;
 
 		/**
@@ -583,6 +562,22 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 			return this;
 		}
 
+        /**
+         * Sets the context extractor that allows providing the MCP feature
+         * implementations to inspect HTTP transport level metadata that was present at
+         * HTTP request processing time. This allows to extract custom headers and other
+         * useful data for use during execution later on in the process.
+         * @param contextExtractor The contextExtractor to fill in a
+         * {@link McpTransportContext}.
+         * @return this builder instance
+         * @throws IllegalArgumentException if contextExtractor is null
+         */
+        public Builder contextExtractor(McpTransportContextExtractor<Context> contextExtractor) {
+            Assert.notNull(contextExtractor, "contextExtractor must not be null");
+            this.contextExtractor = contextExtractor;
+            return this;
+        }
+
 		/**
 		 * Sets the interval for keep-alive pings.
 		 * <p>
@@ -605,10 +600,10 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 			if (messageEndpoint == null) {
 				throw new IllegalStateException("MessageEndpoint must be set");
 			}
-			return new WebRxSseServerTransportProvider(objectMapper, baseUrl, messageEndpoint, sseEndpoint,
+			return new WebRxSseServerTransportProvider(objectMapper, baseUrl,
+                    messageEndpoint, sseEndpoint,
+                    contextExtractor,
 					keepAliveInterval);
 		}
-
 	}
-
 }

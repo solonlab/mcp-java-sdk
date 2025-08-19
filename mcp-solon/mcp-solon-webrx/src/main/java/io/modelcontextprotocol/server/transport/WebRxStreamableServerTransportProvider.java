@@ -12,6 +12,7 @@ import io.modelcontextprotocol.server.McpTransportContextExtractor;
 import io.modelcontextprotocol.spec.*;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.KeepAliveScheduler;
+import io.modelcontextprotocol.util.Utils;
 import org.noear.solon.SolonApp;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Entity;
@@ -26,6 +27,7 @@ import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -42,7 +44,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * @author noear
  * @see McpStreamableServerTransportProvider
  */
-public class WebRxStreamableServerTransportProvider implements McpStreamableServerTransportProvider {
+public class WebRxStreamableServerTransportProvider implements McpStreamableServerTransportProvider, IMcpHttpServerTransport {
 
 	private static final Logger logger = LoggerFactory.getLogger(WebRxStreamableServerTransportProvider.class);
 
@@ -128,6 +130,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 		}
 	}
 
+	@Override
 	public void toHttpHandler(SolonApp app) {
 		if (app != null) {
 			app.get(this.mcpEndpoint, this::handleGet);
@@ -137,8 +140,13 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 	}
 
 	@Override
+	public String getMcpEndpoint() {
+		return mcpEndpoint;
+	}
+
+	@Override
 	public List<String> protocolVersions() {
-		return List.of(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26);
+		return Arrays.asList(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26);
 	}
 
 	@Override
@@ -346,26 +354,29 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 			McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(objectMapper, body);
 
 			// Handle initialization request
-			if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest
-					&& jsonrpcRequest.method().equals(McpSchema.METHOD_INITIALIZE)) {
-				McpSchema.InitializeRequest initializeRequest = objectMapper.convertValue(jsonrpcRequest.params(),
-						new TypeReference<McpSchema.InitializeRequest>() {
-						});
-				McpStreamableServerSession.McpStreamableServerSessionInit init = this.sessionFactory
-						.startSession(initializeRequest);
-				this.sessions.put(init.session().getId(), init.session());
+			if (message instanceof McpSchema.JSONRPCRequest) {
+				McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest) message;
 
-				try {
-					McpSchema.InitializeResult initResult = init.initResult().block();
+				if (jsonrpcRequest.method().equals(McpSchema.METHOD_INITIALIZE)) {
+					McpSchema.InitializeRequest initializeRequest = objectMapper.convertValue(jsonrpcRequest.params(),
+							new TypeReference<McpSchema.InitializeRequest>() {
+							});
+					McpStreamableServerSession.McpStreamableServerSessionInit init = this.sessionFactory
+							.startSession(initializeRequest);
+					this.sessions.put(init.session().getId(), init.session());
 
-					return new Entity()
-							.contentType(MimeType.APPLICATION_JSON_VALUE)
-							.headerAdd(HttpHeaders.MCP_SESSION_ID, init.session().getId())
-							.body(new McpSchema.JSONRPCResponse(McpSchema.JSONRPC_VERSION, jsonrpcRequest.id(), initResult,
-									null));
-				} catch (Exception e) {
-					logger.error("Failed to initialize session: {}", e.getMessage());
-					return new Entity().status(StatusCodes.CODE_INTERNAL_SERVER_ERROR).body(new McpError(e.getMessage()));
+					try {
+						McpSchema.InitializeResult initResult = init.initResult().block();
+
+						return new Entity()
+								.contentType(MimeType.APPLICATION_JSON_VALUE)
+								.headerAdd(HttpHeaders.MCP_SESSION_ID, init.session().getId())
+								.body(new McpSchema.JSONRPCResponse(McpSchema.JSONRPC_VERSION, jsonrpcRequest.id(), initResult,
+										null));
+					} catch (Exception e) {
+						logger.error("Failed to initialize session: {}", e.getMessage());
+						return new Entity().status(StatusCodes.CODE_INTERNAL_SERVER_ERROR).body(new McpError(e.getMessage()));
+					}
 				}
 			}
 
@@ -382,17 +393,20 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 						.body(new McpError("Session not found: " + sessionId));
 			}
 
-			if (message instanceof McpSchema.JSONRPCResponse jsonrpcResponse) {
+			if (message instanceof McpSchema.JSONRPCResponse) {
+				McpSchema.JSONRPCResponse jsonrpcResponse = (McpSchema.JSONRPCResponse) message;
 				session.accept(jsonrpcResponse)
 						.contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext))
 						.block();
 				return new Entity().status(StatusCodes.CODE_ACCEPTED);
-			} else if (message instanceof McpSchema.JSONRPCNotification jsonrpcNotification) {
+			} else if (message instanceof McpSchema.JSONRPCNotification) {
+				McpSchema.JSONRPCNotification jsonrpcNotification = (McpSchema.JSONRPCNotification) message;
 				session.accept(jsonrpcNotification)
 						.contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext))
 						.block();
 				return new Entity().status(StatusCodes.CODE_ACCEPTED);
-			} else if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest) {
+			} else if (message instanceof McpSchema.JSONRPCRequest) {
+				McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest) message;
 				// For streaming responses, we need to return SSE
 				SseEmitter sseEmitter = new SseEmitter(0L);
 
@@ -634,7 +648,10 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 
 		private boolean disallowDelete = false;
 
-		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest, context) -> context;
+		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest, context) -> {
+			context.put(Context.class.getName(), serverRequest);
+			return context;
+		};
 
 		private Duration keepAliveInterval;
 

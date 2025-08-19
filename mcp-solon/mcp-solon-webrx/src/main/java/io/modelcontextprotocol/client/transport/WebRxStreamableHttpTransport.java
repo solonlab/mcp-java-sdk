@@ -26,6 +26,8 @@ import reactor.util.function.Tuple2;
 import reactor.util.function.Tuples;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
@@ -100,7 +102,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 
 	@Override
 	public List<String> protocolVersions() {
-		return List.of(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26);
+		return Arrays.asList(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26);
 	}
 
 	/**
@@ -346,38 +348,43 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 	}
 
 	private Flux<McpSchema.JSONRPCMessage> extractError(HttpResponse response, String sessionRepresentation) {
-		//todo: createError
-		return Flux.<McpSchema.JSONRPCMessage>defer(() -> {
-			try {
-				HttpResponseException e = response.createError();
-				byte[] body = e.bodyBytes();
+        //todo: createError
+        return Flux.<McpSchema.JSONRPCMessage>defer(() -> {
+            try {
+                HttpResponseException e = response.createError();
+                byte[] body = e.bodyBytes();
 
-				McpSchema.JSONRPCResponse.JSONRPCError jsonRpcError = null;
-				Exception toPropagate;
-				try {
-					McpSchema.JSONRPCResponse jsonRpcResponse = objectMapper.readValue(body,
-							McpSchema.JSONRPCResponse.class);
-					jsonRpcError = jsonRpcResponse.error();
-					toPropagate = jsonRpcError != null ? new McpError(jsonRpcError)
-							: new McpError("Can't parse the jsonResponse " + jsonRpcResponse);
-				} catch (IOException ex) {
-					toPropagate = new RuntimeException("Sending request failed", e);
-					logger.debug("Received content together with {} HTTP code response: {}", e.code(), body);
-				}
+                Exception toPropagate;
 
-				// Some implementations can return 400 when presented with a
-				// session id that it doesn't know about, so we will
-				// invalidate the session
-				// https://github.com/modelcontextprotocol/typescript-sdk/issues/389
-				if (e.code() == StatusCodes.CODE_BAD_REQUEST) {
-					return Flux.error(new McpTransportSessionNotFoundException(sessionRepresentation, toPropagate));
-				}
-				return Flux.error(toPropagate);
-			} catch (Exception ex) {
-				return Flux.error(ex);
-			}
-		});
-	}
+                if (body == null || body.length == 0) {
+                    toPropagate = new RuntimeException("Sending request failed(" + e.getMessage()+")", e);
+                } else {
+                    try {
+                        McpSchema.JSONRPCResponse.JSONRPCError jsonRpcError = null;
+                        McpSchema.JSONRPCResponse jsonRpcResponse = objectMapper.readValue(body,
+                                McpSchema.JSONRPCResponse.class);
+                        jsonRpcError = jsonRpcResponse.error();
+                        toPropagate = jsonRpcError != null ? new McpError(jsonRpcError)
+                                : new McpError("Can't parse the jsonResponse " + jsonRpcResponse);
+                    } catch (IOException ex) {
+                        toPropagate = new RuntimeException("Sending request failed", e);
+                        logger.debug("Received content together with {} HTTP code response: {}", e.code(), body);
+                    }
+                }
+
+                // Some implementations can return 400 when presented with a
+                // session id that it doesn't know about, so we will
+                // invalidate the session
+                // https://github.com/modelcontextprotocol/typescript-sdk/issues/389
+                if (e.code() == StatusCodes.CODE_BAD_REQUEST) {
+                    return Flux.error(new McpTransportSessionNotFoundException(sessionRepresentation, toPropagate));
+                }
+                return Flux.error(toPropagate);
+            } catch (Exception ex) {
+                return Flux.error(ex);
+            }
+        });
+    }
 
 	private Flux<McpSchema.JSONRPCMessage> eventStream(McpTransportStream<Disposable> stream, HttpResponse response) {
 		McpTransportStream<Disposable> sessionStream = stream != null ? stream
@@ -451,7 +458,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 				// We don't support batching ATM and probably won't since the next version
 				// considers removing it.
 				McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(this.objectMapper, event.data());
-				return Tuples.of(Optional.ofNullable(event.id()), List.of(message));
+				return Tuples.of(Optional.ofNullable(event.id()), Arrays.asList(message));
 			}
 			catch (IOException ioException) {
 				throw new McpError("Error parsing JSON-RPC message: " + event.data());
@@ -459,7 +466,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 		}
 		else {
 			logger.debug("Received SSE event with type: {}", event);
-			return Tuples.of(Optional.empty(), List.of());
+			return Tuples.of(Optional.empty(), Collections.emptyList());
 		}
 	}
 
