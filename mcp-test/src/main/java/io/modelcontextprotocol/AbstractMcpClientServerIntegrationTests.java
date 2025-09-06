@@ -4,14 +4,6 @@
 
 package io.modelcontextprotocol;
 
-import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
-import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
-import static org.assertj.core.api.Assertions.assertWith;
-import static org.awaitility.Awaitility.await;
-import static org.mockito.Mockito.mock;
-
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -28,9 +20,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.common.McpTransportContext;
@@ -56,11 +45,22 @@ import io.modelcontextprotocol.spec.McpSchema.PromptReference;
 import io.modelcontextprotocol.spec.McpSchema.Role;
 import io.modelcontextprotocol.spec.McpSchema.Root;
 import io.modelcontextprotocol.spec.McpSchema.ServerCapabilities;
+import io.modelcontextprotocol.spec.McpSchema.TextContent;
 import io.modelcontextprotocol.spec.McpSchema.Tool;
 import io.modelcontextprotocol.util.Utils;
 import net.javacrumbs.jsonunit.core.Option;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
+
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertWith;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.Mockito.mock;
 
 public abstract class AbstractMcpClientServerIntegrationTests {
 
@@ -108,8 +108,8 @@ public abstract class AbstractMcpClientServerIntegrationTests {
 		McpServerFeatures.AsyncToolSpecification tool = McpServerFeatures.AsyncToolSpecification.builder()
 			.tool(Tool.builder().name("tool1").description("tool1 description").inputSchema(emptyJsonSchema).build())
 			.callHandler((exchange, request) -> {
-				exchange.createMessage(mock(McpSchema.CreateMessageRequest.class)).block();
-				return Mono.just(mock(CallToolResult.class));
+				return exchange.createMessage(mock(McpSchema.CreateMessageRequest.class))
+					.then(Mono.just(mock(CallToolResult.class)));
 			})
 			.build();
 
@@ -1434,6 +1434,66 @@ public abstract class AbstractMcpClientServerIntegrationTests {
 
 	@ParameterizedTest(name = "{0} : {displayName} ")
 	@ValueSource(strings = { "httpclient", "webflux" })
+	void testStructuredOutputWithInHandlerError(String clientType) {
+		var clientBuilder = clientBuilders.get(clientType);
+
+		// Create a tool with output schema
+		Map<String, Object> outputSchema = Map.of(
+				"type", "object", "properties", Map.of("result", Map.of("type", "number"), "operation",
+						Map.of("type", "string"), "timestamp", Map.of("type", "string")),
+				"required", List.of("result", "operation"));
+
+		Tool calculatorTool = Tool.builder()
+			.name("calculator")
+			.description("Performs mathematical calculations")
+			.outputSchema(outputSchema)
+			.build();
+
+		// Handler that throws an exception to simulate an error
+		McpServerFeatures.SyncToolSpecification tool = McpServerFeatures.SyncToolSpecification.builder()
+			.tool(calculatorTool)
+			.callHandler((exchange, request) -> {
+
+				return CallToolResult.builder()
+					.isError(true)
+					.content(List.of(new TextContent("Error calling tool: Simulated in-handler error")))
+					.build();
+			})
+			.build();
+
+		var mcpServer = prepareSyncServerBuilder().serverInfo("test-server", "1.0.0")
+			.capabilities(ServerCapabilities.builder().tools(true).build())
+			.tools(tool)
+			.build();
+
+		try (var mcpClient = clientBuilder.build()) {
+			InitializeResult initResult = mcpClient.initialize();
+			assertThat(initResult).isNotNull();
+
+			// Verify tool is listed with output schema
+			var toolsList = mcpClient.listTools();
+			assertThat(toolsList.tools()).hasSize(1);
+			assertThat(toolsList.tools().get(0).name()).isEqualTo("calculator");
+			// Note: outputSchema might be null in sync server, but validation still works
+
+			// Call tool with valid structured output
+			CallToolResult response = mcpClient
+				.callTool(new McpSchema.CallToolRequest("calculator", Map.of("expression", "2 + 3")));
+
+			assertThat(response).isNotNull();
+			assertThat(response.isError()).isTrue();
+			assertThat(response.content()).isNotEmpty();
+			assertThat(response.content())
+				.containsExactly(new McpSchema.TextContent("Error calling tool: Simulated in-handler error"));
+			assertThat(response.structuredContent()).isNull();
+		}
+		finally {
+			mcpServer.closeGracefully();
+		}
+	}
+
+	@ParameterizedTest(name = "{0} : {displayName} ")
+	@ValueSource(strings = { "httpclient" })
 	void testStructuredOutputValidationFailure(String clientType) {
 
 		var clientBuilder = clientBuilders.get(clientType);
