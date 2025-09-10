@@ -18,8 +18,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.TypeRef;
+
 import io.modelcontextprotocol.util.Assert;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -109,8 +110,6 @@ public final class McpSchema {
 	// Elicitation Methods
 	public static final String METHOD_ELICITATION_CREATE = "elicitation/create";
 
-	private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
 	// ---------------------------
 	// JSON-RPC Error Codes
 	// ---------------------------
@@ -176,12 +175,12 @@ public final class McpSchema {
 
 	}
 
-	private static final TypeReference<HashMap<String, Object>> MAP_TYPE_REF = new TypeReference<>() {
+	private static final TypeRef<HashMap<String, Object>> MAP_TYPE_REF = new TypeRef<>() {
 	};
 
 	/**
 	 * Deserializes a JSON string into a JSONRPCMessage object.
-	 * @param objectMapper The ObjectMapper instance to use for deserialization
+	 * @param jsonMapper The JsonMapper instance to use for deserialization
 	 * @param jsonText The JSON string to deserialize
 	 * @return A JSONRPCMessage instance using either the {@link JSONRPCRequest},
 	 * {@link JSONRPCNotification}, or {@link JSONRPCResponse} classes.
@@ -189,22 +188,22 @@ public final class McpSchema {
 	 * @throws IllegalArgumentException If the JSON structure doesn't match any known
 	 * message type
 	 */
-	public static JSONRPCMessage deserializeJsonRpcMessage(ObjectMapper objectMapper, String jsonText)
+	public static JSONRPCMessage deserializeJsonRpcMessage(McpJsonMapper jsonMapper, String jsonText)
 			throws IOException {
 
 		logger.debug("Received JSON message: {}", jsonText);
 
-		var map = objectMapper.readValue(jsonText, MAP_TYPE_REF);
+		var map = jsonMapper.readValue(jsonText, MAP_TYPE_REF);
 
 		// Determine message type based on specific JSON structure
 		if (map.containsKey("method") && map.containsKey("id")) {
-			return objectMapper.convertValue(map, JSONRPCRequest.class);
+			return jsonMapper.convertValue(map, JSONRPCRequest.class);
 		}
 		else if (map.containsKey("method") && !map.containsKey("id")) {
-			return objectMapper.convertValue(map, JSONRPCNotification.class);
+			return jsonMapper.convertValue(map, JSONRPCNotification.class);
 		}
 		else if (map.containsKey("result") || map.containsKey("error")) {
-			return objectMapper.convertValue(map, JSONRPCResponse.class);
+			return jsonMapper.convertValue(map, JSONRPCResponse.class);
 		}
 
 		throw new IllegalArgumentException("Cannot deserialize JSONRPCMessage: " + jsonText);
@@ -1270,53 +1269,6 @@ public final class McpSchema {
 		@JsonProperty("annotations") ToolAnnotations annotations,
 		@JsonProperty("_meta") Map<String, Object> meta) { // @formatter:on
 
-		/**
-		 * @deprecated Only exists for backwards-compatibility purposes. Use
-		 * {@link Tool#builder()} instead.
-		 */
-		@Deprecated
-		public Tool(String name, String description, JsonSchema inputSchema, ToolAnnotations annotations) {
-			this(name, null, description, inputSchema, null, annotations, null);
-		}
-
-		/**
-		 * @deprecated Only exists for backwards-compatibility purposes. Use
-		 * {@link Tool#builder()} instead.
-		 */
-		@Deprecated
-		public Tool(String name, String description, String inputSchema) {
-			this(name, null, description, parseSchema(inputSchema), null, null, null);
-		}
-
-		/**
-		 * @deprecated Only exists for backwards-compatibility purposes. Use
-		 * {@link Tool#builder()} instead.
-		 */
-		@Deprecated
-		public Tool(String name, String description, String schema, ToolAnnotations annotations) {
-			this(name, null, description, parseSchema(schema), null, annotations, null);
-		}
-
-		/**
-		 * @deprecated Only exists for backwards-compatibility purposes. Use
-		 * {@link Tool#builder()} instead.
-		 */
-		@Deprecated
-		public Tool(String name, String description, String inputSchema, String outputSchema,
-				ToolAnnotations annotations) {
-			this(name, null, description, parseSchema(inputSchema), schemaToMap(outputSchema), annotations, null);
-		}
-
-		/**
-		 * @deprecated Only exists for backwards-compatibility purposes. Use
-		 * {@link Tool#builder()} instead.
-		 */
-		@Deprecated
-		public Tool(String name, String title, String description, String inputSchema, String outputSchema,
-				ToolAnnotations annotations) {
-			this(name, title, description, parseSchema(inputSchema), schemaToMap(outputSchema), annotations, null);
-		}
-
 		public static Builder builder() {
 			return new Builder();
 		}
@@ -1357,8 +1309,8 @@ public final class McpSchema {
 				return this;
 			}
 
-			public Builder inputSchema(String inputSchema) {
-				this.inputSchema = parseSchema(inputSchema);
+			public Builder inputSchema(McpJsonMapper jsonMapper, String inputSchema) {
+				this.inputSchema = parseSchema(jsonMapper, inputSchema);
 				return this;
 			}
 
@@ -1367,8 +1319,8 @@ public final class McpSchema {
 				return this;
 			}
 
-			public Builder outputSchema(String outputSchema) {
-				this.outputSchema = schemaToMap(outputSchema);
+			public Builder outputSchema(McpJsonMapper jsonMapper, String outputSchema) {
+				this.outputSchema = schemaToMap(jsonMapper, outputSchema);
 				return this;
 			}
 
@@ -1390,18 +1342,18 @@ public final class McpSchema {
 		}
 	}
 
-	private static Map<String, Object> schemaToMap(String schema) {
+	private static Map<String, Object> schemaToMap(McpJsonMapper jsonMapper, String schema) {
 		try {
-			return OBJECT_MAPPER.readValue(schema, MAP_TYPE_REF);
+			return jsonMapper.readValue(schema, MAP_TYPE_REF);
 		}
 		catch (IOException e) {
 			throw new IllegalArgumentException("Invalid schema: " + schema, e);
 		}
 	}
 
-	private static JsonSchema parseSchema(String schema) {
+	private static JsonSchema parseSchema(McpJsonMapper jsonMapper, String schema) {
 		try {
-			return OBJECT_MAPPER.readValue(schema, JsonSchema.class);
+			return jsonMapper.readValue(schema, JsonSchema.class);
 		}
 		catch (IOException e) {
 			throw new IllegalArgumentException("Invalid schema: " + schema, e);
@@ -1425,17 +1377,17 @@ public final class McpSchema {
 		@JsonProperty("arguments") Map<String, Object> arguments,
 		@JsonProperty("_meta") Map<String, Object> meta) implements Request { // @formatter:on
 
-		public CallToolRequest(String name, String jsonArguments) {
-			this(name, parseJsonArguments(jsonArguments), null);
+		public CallToolRequest(McpJsonMapper jsonMapper, String name, String jsonArguments) {
+			this(name, parseJsonArguments(jsonMapper, jsonArguments), null);
 		}
 
 		public CallToolRequest(String name, Map<String, Object> arguments) {
 			this(name, arguments, null);
 		}
 
-		private static Map<String, Object> parseJsonArguments(String jsonArguments) {
+		private static Map<String, Object> parseJsonArguments(McpJsonMapper jsonMapper, String jsonArguments) {
 			try {
-				return OBJECT_MAPPER.readValue(jsonArguments, MAP_TYPE_REF);
+				return jsonMapper.readValue(jsonArguments, MAP_TYPE_REF);
 			}
 			catch (IOException e) {
 				throw new IllegalArgumentException("Invalid arguments: " + jsonArguments, e);
@@ -1464,8 +1416,8 @@ public final class McpSchema {
 				return this;
 			}
 
-			public Builder arguments(String jsonArguments) {
-				this.arguments = parseJsonArguments(jsonArguments);
+			public Builder arguments(McpJsonMapper jsonMapper, String jsonArguments) {
+				this.arguments = parseJsonArguments(jsonMapper, jsonArguments);
 				return this;
 			}
 
@@ -1576,10 +1528,10 @@ public final class McpSchema {
 				return this;
 			}
 
-			public Builder structuredContent(String structuredContent) {
+			public Builder structuredContent(McpJsonMapper jsonMapper, String structuredContent) {
 				Assert.hasText(structuredContent, "structuredContent must not be empty");
 				try {
-					this.structuredContent = OBJECT_MAPPER.readValue(structuredContent, MAP_TYPE_REF);
+					this.structuredContent = jsonMapper.readValue(structuredContent, MAP_TYPE_REF);
 				}
 				catch (IOException e) {
 					throw new IllegalArgumentException("Invalid structured content: " + structuredContent, e);
