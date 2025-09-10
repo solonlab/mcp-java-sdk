@@ -6,7 +6,7 @@ package io.modelcontextprotocol.server.transport;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.server.DefaultMcpTransportContext;
+import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.server.McpTransportContextExtractor;
 import io.modelcontextprotocol.spec.HttpHeaders;
 import io.modelcontextprotocol.spec.McpError;
@@ -15,7 +15,6 @@ import io.modelcontextprotocol.spec.McpStreamableServerSession;
 import io.modelcontextprotocol.spec.McpStreamableServerTransport;
 import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import io.modelcontextprotocol.spec.ProtocolVersions;
-import io.modelcontextprotocol.server.McpTransportContext;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.KeepAliveScheduler;
 
@@ -166,7 +165,7 @@ public class WebFluxStreamableServerTransportProvider implements McpStreamableSe
 			return ServerResponse.status(HttpStatus.SERVICE_UNAVAILABLE).bodyValue("Server is shutting down");
 		}
 
-		McpTransportContext transportContext = this.contextExtractor.extract(request, new DefaultMcpTransportContext());
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
 
 		return Mono.defer(() -> {
 			List<MediaType> acceptHeaders = request.headers().asHttpHeaders().getAccept();
@@ -191,7 +190,9 @@ public class WebFluxStreamableServerTransportProvider implements McpStreamableSe
 				String lastId = request.headers().asHttpHeaders().getFirst(HttpHeaders.LAST_EVENT_ID);
 				return ServerResponse.ok()
 					.contentType(MediaType.TEXT_EVENT_STREAM)
-					.body(session.replay(lastId), ServerSentEvent.class);
+					.body(session.replay(lastId)
+						.contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)),
+							ServerSentEvent.class);
 			}
 
 			return ServerResponse.ok()
@@ -202,7 +203,9 @@ public class WebFluxStreamableServerTransportProvider implements McpStreamableSe
 					McpStreamableServerSession.McpStreamableServerSessionStream listeningStream = session
 						.listeningStream(sessionTransport);
 					sink.onDispose(listeningStream::close);
-				}), ServerSentEvent.class);
+					// TODO Clarify why the outer context is not present in the
+					// Flux.create sink?
+				}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)), ServerSentEvent.class);
 
 		}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext));
 	}
@@ -217,7 +220,7 @@ public class WebFluxStreamableServerTransportProvider implements McpStreamableSe
 			return ServerResponse.status(HttpStatus.SERVICE_UNAVAILABLE).bodyValue("Server is shutting down");
 		}
 
-		McpTransportContext transportContext = this.contextExtractor.extract(request, new DefaultMcpTransportContext());
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
 
 		List<MediaType> acceptHeaders = request.headers().asHttpHeaders().getAccept();
 		if (!(acceptHeaders.contains(MediaType.APPLICATION_JSON)
@@ -282,7 +285,10 @@ public class WebFluxStreamableServerTransportProvider implements McpStreamableSe
 								return true;
 							}).contextWrite(sink.contextView()).subscribe();
 							sink.onCancel(streamSubscription);
-						}), ServerSentEvent.class);
+							// TODO Clarify why the outer context is not present in the
+							// Flux.create sink?
+						}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)),
+								ServerSentEvent.class);
 				}
 				else {
 					return ServerResponse.badRequest().bodyValue(new McpError("Unknown message type"));
@@ -302,7 +308,7 @@ public class WebFluxStreamableServerTransportProvider implements McpStreamableSe
 			return ServerResponse.status(HttpStatus.SERVICE_UNAVAILABLE).bodyValue("Server is shutting down");
 		}
 
-		McpTransportContext transportContext = this.contextExtractor.extract(request, new DefaultMcpTransportContext());
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
 
 		return Mono.defer(() -> {
 			if (!request.headers().asHttpHeaders().containsKey(HttpHeaders.MCP_SESSION_ID)) {
@@ -395,7 +401,8 @@ public class WebFluxStreamableServerTransportProvider implements McpStreamableSe
 
 		private String mcpEndpoint = "/mcp";
 
-		private McpTransportContextExtractor<ServerRequest> contextExtractor = (serverRequest, context) -> context;
+		private McpTransportContextExtractor<ServerRequest> contextExtractor = (
+				serverRequest) -> McpTransportContext.EMPTY;
 
 		private boolean disallowDelete;
 
