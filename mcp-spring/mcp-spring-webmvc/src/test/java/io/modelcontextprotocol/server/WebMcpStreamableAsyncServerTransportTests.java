@@ -8,6 +8,7 @@ import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.startup.Tomcat;
 import org.junit.jupiter.api.Timeout;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
@@ -21,7 +22,7 @@ import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import reactor.netty.DisposableServer;
 
 /**
- * Tests for {@link McpAsyncServer} using {@link WebFluxSseServerTransportProvider}.
+ * Tests for {@link McpAsyncServer} using {@link WebMvcSseServerTransportProvider}.
  *
  * @author Christian Tzolov
  */
