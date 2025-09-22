@@ -33,6 +33,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
 
+import static io.modelcontextprotocol.spec.McpError.RESOURCE_NOT_FOUND;
+
 /**
  * A stateless MCP server implementation for use with Streamable HTTP transport types. It
  * allows simple horizontal scalability since it does not maintain a session and does not
@@ -478,21 +480,19 @@ public class McpStatelessAsyncServer {
 
 	private McpStatelessRequestHandler<McpSchema.ReadResourceResult> resourcesReadRequestHandler() {
 		return (ctx, params) -> {
-			McpSchema.ReadResourceRequest resourceRequest = jsonMapper.convertValue(params,
-					new TypeRef<McpSchema.ReadResourceRequest>() {
-					});
+			McpSchema.ReadResourceRequest resourceRequest = jsonMapper.convertValue(params, new TypeRef<>() {
+			});
 			var resourceUri = resourceRequest.uri();
-
-			McpStatelessServerFeatures.AsyncResourceSpecification specification = this.resources.values()
-				.stream()
-				.filter(resourceSpecification -> this.uriTemplateManagerFactory
-					.create(resourceSpecification.resource().uri())
-					.matches(resourceUri))
-				.findFirst()
-				.orElseThrow(() -> new McpError("Resource not found: " + resourceUri));
-
-			return specification.readHandler().apply(ctx, resourceRequest);
+			return asyncResourceSpecification(resourceUri).map(spec -> spec.readHandler().apply(ctx, resourceRequest))
+				.orElseGet(() -> Mono.error(RESOURCE_NOT_FOUND.apply(resourceUri)));
 		};
+	}
+
+	private Optional<McpStatelessServerFeatures.AsyncResourceSpecification> asyncResourceSpecification(String uri) {
+		return resources.values()
+			.stream()
+			.filter(spec -> uriTemplateManagerFactory.create(spec.resource().uri()).matches(uri))
+			.findFirst();
 	}
 
 	// ---------------------------------------
@@ -612,10 +612,10 @@ public class McpStatelessAsyncServer {
 			}
 
 			if (type.equals("ref/resource") && request.ref() instanceof McpSchema.ResourceReference resourceReference) {
-				McpStatelessServerFeatures.AsyncResourceSpecification resourceSpec = this.resources
+				McpStatelessServerFeatures.AsyncResourceSpecification resourceSpec = resources
 					.get(resourceReference.uri());
 				if (resourceSpec == null) {
-					return Mono.error(new McpError("Resource not found: " + resourceReference.uri()));
+					return Mono.error(RESOURCE_NOT_FOUND.apply(resourceReference.uri()));
 				}
 				if (!uriTemplateManagerFactory.create(resourceSpec.resource().uri())
 					.getVariableNames()

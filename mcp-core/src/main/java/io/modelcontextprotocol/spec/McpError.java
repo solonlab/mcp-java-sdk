@@ -7,7 +7,18 @@ package io.modelcontextprotocol.spec;
 import io.modelcontextprotocol.spec.McpSchema.JSONRPCResponse.JSONRPCError;
 import io.modelcontextprotocol.util.Assert;
 
+import java.util.Map;
+import java.util.function.Function;
+
 public class McpError extends RuntimeException {
+
+	/**
+	 * <a href=
+	 * "https://modelcontextprotocol.io/specification/2025-06-18/server/resources#error-handling">Resource
+	 * Error Handling</a>
+	 */
+	public static final Function<String, McpError> RESOURCE_NOT_FOUND = resourceUri -> new McpError(new JSONRPCError(
+			McpSchema.ErrorCodes.RESOURCE_NOT_FOUND, "Resource not found", Map.of("uri", resourceUri)));
 
 	private JSONRPCError jsonRpcError;
 

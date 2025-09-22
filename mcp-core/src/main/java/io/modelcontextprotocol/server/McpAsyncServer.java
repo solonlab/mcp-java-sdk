@@ -48,6 +48,8 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import static io.modelcontextprotocol.spec.McpError.RESOURCE_NOT_FOUND;
+
 /**
  * The Model Context Protocol (MCP) server implementation that provides asynchronous
  * communication using Project Reactor's Mono and Flux types.
@@ -638,22 +640,21 @@ public class McpAsyncServer {
 	}
 
 	private McpRequestHandler<McpSchema.ReadResourceResult> resourcesReadRequestHandler() {
-		return (exchange, params) -> {
-			McpSchema.ReadResourceRequest resourceRequest = jsonMapper.convertValue(params,
-					new TypeRef<McpSchema.ReadResourceRequest>() {
-					});
+		return (ex, params) -> {
+			McpSchema.ReadResourceRequest resourceRequest = jsonMapper.convertValue(params, new TypeRef<>() {
+			});
 			var resourceUri = resourceRequest.uri();
-
-			McpServerFeatures.AsyncResourceSpecification specification = this.resources.values()
-				.stream()
-				.filter(resourceSpecification -> this.uriTemplateManagerFactory
-					.create(resourceSpecification.resource().uri())
-					.matches(resourceUri))
-				.findFirst()
-				.orElseThrow(() -> new McpError("Resource not found: " + resourceUri));
-
-			return Mono.defer(() -> specification.readHandler().apply(exchange, resourceRequest));
+			return asyncResourceSpecification(resourceUri)
+				.map(spec -> Mono.defer(() -> spec.readHandler().apply(ex, resourceRequest)))
+				.orElseGet(() -> Mono.error(RESOURCE_NOT_FOUND.apply(resourceUri)));
 		};
+	}
+
+	private Optional<McpServerFeatures.AsyncResourceSpecification> asyncResourceSpecification(String uri) {
+		return resources.values()
+			.stream()
+			.filter(spec -> uriTemplateManagerFactory.create(spec.resource().uri()).matches(uri))
+			.findFirst();
 	}
 
 	// ---------------------------------------
@@ -846,7 +847,7 @@ public class McpAsyncServer {
 			if (type.equals("ref/resource") && request.ref() instanceof McpSchema.ResourceReference resourceReference) {
 				McpServerFeatures.AsyncResourceSpecification resourceSpec = this.resources.get(resourceReference.uri());
 				if (resourceSpec == null) {
-					return Mono.error(new McpError("Resource not found: " + resourceReference.uri()));
+					return Mono.error(RESOURCE_NOT_FOUND.apply(resourceReference.uri()));
 				}
 				if (!uriTemplateManagerFactory.create(resourceSpec.resource().uri())
 					.getVariableNames()
