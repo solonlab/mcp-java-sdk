@@ -1064,7 +1064,7 @@ public final class McpSchema {
 	/**
 	 * The contents of a specific resource or sub-resource.
 	 */
-	@JsonTypeInfo(use = JsonTypeInfo.Id.DEDUCTION, include = As.PROPERTY)
+	@JsonTypeInfo(use = JsonTypeInfo.Id.DEDUCTION)
 	@JsonSubTypes({ @JsonSubTypes.Type(value = TextResourceContents.class, name = "text"),
 			@JsonSubTypes.Type(value = BlobResourceContents.class, name = "blob") })
 	public sealed interface ResourceContents extends Meta permits TextResourceContents, BlobResourceContents {
