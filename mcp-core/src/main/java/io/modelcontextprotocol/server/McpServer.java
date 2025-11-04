@@ -11,7 +11,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 
@@ -25,7 +24,7 @@ import io.modelcontextprotocol.spec.McpServerTransportProvider;
 import io.modelcontextprotocol.spec.McpStatelessServerTransport;
 import io.modelcontextprotocol.spec.McpStreamableServerTransportProvider;
 import io.modelcontextprotocol.util.Assert;
-import io.modelcontextprotocol.util.DeafaultMcpUriTemplateManagerFactory;
+import io.modelcontextprotocol.util.DefaultMcpUriTemplateManagerFactory;
 import io.modelcontextprotocol.util.McpUriTemplateManagerFactory;
 import reactor.core.publisher.Mono;
 
@@ -134,7 +133,7 @@ import reactor.core.publisher.Mono;
  */
 public interface McpServer {
 
-	McpSchema.Implementation DEFAULT_SERVER_INFO = new McpSchema.Implementation("mcp-server", "1.0.0");
+	McpSchema.Implementation DEFAULT_SERVER_INFO = new McpSchema.Implementation("Java SDK MCP Server", "0.15.0");
 
 	/**
 	 * Starts building a synchronous MCP server that provides blocking operations.
@@ -268,7 +267,7 @@ public interface McpServer {
 	 */
 	abstract class AsyncSpecification<S extends AsyncSpecification<S>> {
 
-		McpUriTemplateManagerFactory uriTemplateManagerFactory = new DeafaultMcpUriTemplateManagerFactory();
+		McpUriTemplateManagerFactory uriTemplateManagerFactory = new DefaultMcpUriTemplateManagerFactory();
 
 		McpJsonMapper jsonMapper;
 
@@ -865,7 +864,7 @@ public interface McpServer {
 	 */
 	abstract class SyncSpecification<S extends SyncSpecification<S>> {
 
-		McpUriTemplateManagerFactory uriTemplateManagerFactory = new DeafaultMcpUriTemplateManagerFactory();
+		McpUriTemplateManagerFactory uriTemplateManagerFactory = new DefaultMcpUriTemplateManagerFactory();
 
 		McpJsonMapper jsonMapper;
 
@@ -1407,7 +1406,7 @@ public interface McpServer {
 
 		private final McpStatelessServerTransport transport;
 
-		McpUriTemplateManagerFactory uriTemplateManagerFactory = new DeafaultMcpUriTemplateManagerFactory();
+		McpUriTemplateManagerFactory uriTemplateManagerFactory = new DefaultMcpUriTemplateManagerFactory();
 
 		McpJsonMapper jsonMapper;
 
@@ -1870,7 +1869,7 @@ public interface McpServer {
 
 		boolean immediateExecution = false;
 
-		McpUriTemplateManagerFactory uriTemplateManagerFactory = new DeafaultMcpUriTemplateManagerFactory();
+		McpUriTemplateManagerFactory uriTemplateManagerFactory = new DefaultMcpUriTemplateManagerFactory();
 
 		McpJsonMapper jsonMapper;
 

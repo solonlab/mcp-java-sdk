@@ -29,6 +29,7 @@ import io.modelcontextprotocol.client.transport.customizer.McpAsyncHttpClientReq
 import io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer;
 import io.modelcontextprotocol.client.transport.ResponseSubscribers.ResponseEvent;
 import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.spec.ClosedMcpTransportSession;
 import io.modelcontextprotocol.spec.DefaultMcpTransportSession;
 import io.modelcontextprotocol.spec.DefaultMcpTransportStream;
 import io.modelcontextprotocol.spec.HttpHeaders;
@@ -118,7 +119,7 @@ public class HttpClientStreamableHttpTransport implements McpClientTransport {
 
 	private final McpAsyncHttpClientRequestCustomizer httpRequestCustomizer;
 
-	private final AtomicReference<DefaultMcpTransportSession> activeSession = new AtomicReference<>();
+	private final AtomicReference<McpTransportSession<Disposable>> activeSession = new AtomicReference<>();
 
 	private final AtomicReference<Function<Mono<McpSchema.JSONRPCMessage>, Mono<McpSchema.JSONRPCMessage>>> handler = new AtomicReference<>();
 
@@ -163,10 +164,18 @@ public class HttpClientStreamableHttpTransport implements McpClientTransport {
 		});
 	}
 
-	private DefaultMcpTransportSession createTransportSession() {
+	private McpTransportSession<Disposable> createTransportSession() {
 		Function<String, Publisher<Void>> onClose = sessionId -> sessionId == null ? Mono.empty()
 				: createDelete(sessionId);
 		return new DefaultMcpTransportSession(onClose);
+	}
+
+	private McpTransportSession<Disposable> createClosedSession(McpTransportSession<Disposable> existingSession) {
+		var existingSessionId = Optional.ofNullable(existingSession)
+			.filter(session -> !(session instanceof ClosedMcpTransportSession<Disposable>))
+			.flatMap(McpTransportSession::sessionId)
+			.orElse(null);
+		return new ClosedMcpTransportSession<>(existingSessionId);
 	}
 
 	private Publisher<Void> createDelete(String sessionId) {
@@ -210,9 +219,9 @@ public class HttpClientStreamableHttpTransport implements McpClientTransport {
 	public Mono<Void> closeGracefully() {
 		return Mono.defer(() -> {
 			logger.debug("Graceful close triggered");
-			DefaultMcpTransportSession currentSession = this.activeSession.getAndSet(createTransportSession());
+			McpTransportSession<Disposable> currentSession = this.activeSession.getAndUpdate(this::createClosedSession);
 			if (currentSession != null) {
-				return currentSession.closeGracefully();
+				return Mono.from(currentSession.closeGracefully());
 			}
 			return Mono.empty();
 		});
@@ -246,7 +255,7 @@ public class HttpClientStreamableHttpTransport implements McpClientTransport {
 				}
 
 				var builder = requestBuilder.uri(uri)
-					.header("Accept", TEXT_EVENT_STREAM)
+					.header(HttpHeaders.ACCEPT, TEXT_EVENT_STREAM)
 					.header("Cache-Control", "no-cache")
 					.header(HttpHeaders.PROTOCOL_VERSION, MCP_PROTOCOL_VERSION)
 					.GET();
@@ -371,7 +380,7 @@ public class HttpClientStreamableHttpTransport implements McpClientTransport {
 
 		BodyHandler<Void> responseBodyHandler = responseInfo -> {
 
-			String contentType = responseInfo.headers().firstValue("Content-Type").orElse("").toLowerCase();
+			String contentType = responseInfo.headers().firstValue(HttpHeaders.CONTENT_TYPE).orElse("").toLowerCase();
 
 			if (contentType.contains(TEXT_EVENT_STREAM)) {
 				// For SSE streams, use line subscriber that returns Void
@@ -420,9 +429,9 @@ public class HttpClientStreamableHttpTransport implements McpClientTransport {
 				}
 
 				var builder = requestBuilder.uri(uri)
-					.header("Accept", APPLICATION_JSON + ", " + TEXT_EVENT_STREAM)
-					.header("Content-Type", APPLICATION_JSON)
-					.header("Cache-Control", "no-cache")
+					.header(HttpHeaders.ACCEPT, APPLICATION_JSON + ", " + TEXT_EVENT_STREAM)
+					.header(HttpHeaders.CONTENT_TYPE, APPLICATION_JSON)
+					.header(HttpHeaders.CACHE_CONTROL, "no-cache")
 					.header(HttpHeaders.PROTOCOL_VERSION, MCP_PROTOCOL_VERSION)
 					.POST(HttpRequest.BodyPublishers.ofString(jsonBody));
 				var transportContext = ctx.getOrDefault(McpTransportContext.KEY, McpTransportContext.EMPTY);
@@ -459,15 +468,19 @@ public class HttpClientStreamableHttpTransport implements McpClientTransport {
 
 					String contentType = responseEvent.responseInfo()
 						.headers()
-						.firstValue("Content-Type")
+						.firstValue(HttpHeaders.CONTENT_TYPE)
 						.orElse("")
 						.toLowerCase();
 
-					if (contentType.isBlank()) {
-						logger.debug("No content type returned for POST in session {}", sessionRepresentation);
+					String contentLength = responseEvent.responseInfo()
+						.headers()
+						.firstValue(HttpHeaders.CONTENT_LENGTH)
+						.orElse(null);
+
+					if (contentType.isBlank() || "0".equals(contentLength)) {
+						logger.debug("No body returned for POST in session {}", sessionRepresentation);
 						// No content type means no response body, so we can just
-						// return
-						// an empty stream
+						// return an empty stream
 						deliveredSink.success();
 						return Flux.empty();
 					}
@@ -503,8 +516,9 @@ public class HttpClientStreamableHttpTransport implements McpClientTransport {
 					else if (contentType.contains(APPLICATION_JSON)) {
 						deliveredSink.success();
 						String data = ((ResponseSubscribers.AggregateResponseEvent) responseEvent).data();
-						if (sentMessage instanceof McpSchema.JSONRPCNotification && Utils.hasText(data)) {
-							logger.warn("Notification: {} received non-compliant response: {}", sentMessage, data);
+						if (sentMessage instanceof McpSchema.JSONRPCNotification) {
+							logger.warn("Notification: {} received non-compliant response: {}", sentMessage,
+									Utils.hasText(data) ? data : "[empty]");
 							return Mono.empty();
 						}
 

@@ -17,7 +17,6 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonSubTypes;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
-import com.fasterxml.jackson.annotation.JsonTypeInfo.As;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.util.Assert;
@@ -307,7 +306,7 @@ public final class McpSchema {
 		@JsonInclude(JsonInclude.Include.NON_ABSENT)
 		@JsonIgnoreProperties(ignoreUnknown = true)
 		public record JSONRPCError( // @formatter:off
-			@JsonProperty("code") int code,
+			@JsonProperty("code") Integer code,
 			@JsonProperty("message") String message,
 			@JsonProperty("data") Object data) { // @formatter:on
 		}
@@ -1064,9 +1063,9 @@ public final class McpSchema {
 	/**
 	 * The contents of a specific resource or sub-resource.
 	 */
-	@JsonTypeInfo(use = JsonTypeInfo.Id.DEDUCTION, include = As.PROPERTY)
-	@JsonSubTypes({ @JsonSubTypes.Type(value = TextResourceContents.class, name = "text"),
-			@JsonSubTypes.Type(value = BlobResourceContents.class, name = "blob") })
+	@JsonTypeInfo(use = JsonTypeInfo.Id.DEDUCTION)
+	@JsonSubTypes({ @JsonSubTypes.Type(value = TextResourceContents.class),
+			@JsonSubTypes.Type(value = BlobResourceContents.class) })
 	public sealed interface ResourceContents extends Meta permits TextResourceContents, BlobResourceContents {
 
 		/**
@@ -1823,14 +1822,14 @@ public final class McpSchema {
 		@JsonProperty("systemPrompt") String systemPrompt,
 		@JsonProperty("includeContext") ContextInclusionStrategy includeContext,
 		@JsonProperty("temperature") Double temperature,
-		@JsonProperty("maxTokens") int maxTokens,
+		@JsonProperty("maxTokens") Integer maxTokens,
 		@JsonProperty("stopSequences") List<String> stopSequences,
 		@JsonProperty("metadata") Map<String, Object> metadata,
 		@JsonProperty("_meta") Map<String, Object> meta) implements Request { // @formatter:on
 
 		// backwards compatibility constructor
 		public CreateMessageRequest(List<SamplingMessage> messages, ModelPreferences modelPreferences,
-				String systemPrompt, ContextInclusionStrategy includeContext, Double temperature, int maxTokens,
+				String systemPrompt, ContextInclusionStrategy includeContext, Double temperature, Integer maxTokens,
 				List<String> stopSequences, Map<String, Object> metadata) {
 			this(messages, modelPreferences, systemPrompt, includeContext, temperature, maxTokens, stopSequences,
 					metadata, null);
@@ -1860,7 +1859,7 @@ public final class McpSchema {
 
 			private Double temperature;
 
-			private int maxTokens;
+			private Integer maxTokens;
 
 			private List<String> stopSequences;
 
@@ -2502,6 +2501,7 @@ public final class McpSchema {
 		 * @param hasMore Indicates whether there are additional completion options beyond
 		 * those provided in the current response, even if the exact total is unknown
 		 */
+		@JsonInclude(JsonInclude.Include.ALWAYS)
 		public record CompleteCompletion( // @formatter:off
 				@JsonProperty("values") List<String> values,
 				@JsonProperty("total") Integer total,
