@@ -1,16 +1,15 @@
 package io.modelcontextprotocol.server.transport;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.server.DefaultMcpTransportContext;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpStatelessServerHandler;
-import io.modelcontextprotocol.server.McpTransportContext;
 import io.modelcontextprotocol.server.McpTransportContextExtractor;
 import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpStatelessServerTransport;
 import io.modelcontextprotocol.spec.ProtocolVersions;
 import io.modelcontextprotocol.util.Assert;
-import io.modelcontextprotocol.util.Utils;
 import org.noear.solon.SolonApp;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Entity;
@@ -35,7 +34,7 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 
 	private static final Logger logger = LoggerFactory.getLogger(WebRxStatelessServerTransport.class);
 
-	private final ObjectMapper objectMapper;
+	private final McpJsonMapper jsonMapper;
 
 	private final String mcpEndpoint;
 
@@ -45,13 +44,13 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 
 	private volatile boolean isClosing = false;
 
-	private WebRxStatelessServerTransport(ObjectMapper objectMapper, String mcpEndpoint,
+	private WebRxStatelessServerTransport(McpJsonMapper jsonMapper, String mcpEndpoint,
                                           McpTransportContextExtractor<Context> contextExtractor) {
-		Assert.notNull(objectMapper, "objectMapper must not be null");
+		Assert.notNull(jsonMapper, "objectMapper must not be null");
 		Assert.notNull(mcpEndpoint, "mcpEndpoint must not be null");
 		Assert.notNull(contextExtractor, "contextExtractor must not be null");
 
-		this.objectMapper = objectMapper;
+		this.jsonMapper = jsonMapper;
 		this.mcpEndpoint = mcpEndpoint;
 		this.contextExtractor = contextExtractor;
 	}
@@ -99,7 +98,7 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 				McpError mcpError = (McpError) entity.body();
 				entity.body(mcpError.getMessage());
 			} else if (entity.body() instanceof McpSchema.JSONRPCResponse) {
-				entity.body(objectMapper.writeValueAsString(entity.body()));
+				entity.body(jsonMapper.writeValueAsString(entity.body()));
 			}
 		}
 
@@ -111,7 +110,7 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 			return new Entity().status(StatusCodes.CODE_SERVICE_UNAVAILABLE).body("Server is shutting down");
 		}
 
-		McpTransportContext transportContext = this.contextExtractor.extract(request, new DefaultMcpTransportContext());
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
 
 		String acceptHeaders = request.acceptNew();
 		if (!(acceptHeaders.contains(MimeType.APPLICATION_JSON_VALUE)
@@ -121,7 +120,7 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 
 		try {
 			String body = request.body();
-			McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(objectMapper, body);
+			McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(jsonMapper, body);
 
 			if (message instanceof McpSchema.JSONRPCRequest) {
 				McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest) message;
@@ -186,33 +185,32 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 	 */
 	public static class Builder {
 
-		private ObjectMapper objectMapper;
+		private McpJsonMapper jsonMapper;
 
 		private String mcpEndpoint = "/mcp";
 
-		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest, context) -> {
-			context.put(Context.class.getName(), serverRequest);
-			return context;
-		};
+		private McpTransportContextExtractor<Context> contextExtractor = (
+                serverRequest) -> McpTransportContext.EMPTY;
 
 		private Builder() {
 			// used by a static method
 		}
 
-		/**
-		 * Sets the ObjectMapper to use for JSON serialization/deserialization of MCP
-		 * messages.
-		 * @param objectMapper The ObjectMapper instance. Must not be null.
-		 * @return this builder instance
-		 * @throws IllegalArgumentException if objectMapper is null
-		 */
-		public Builder objectMapper(ObjectMapper objectMapper) {
-			Assert.notNull(objectMapper, "ObjectMapper must not be null");
-			this.objectMapper = objectMapper;
-			return this;
-		}
+        /**
+         * Sets the ObjectMapper to use for JSON serialization/deserialization of MCP
+         * messages.
+         * @param jsonMapper The ObjectMapper instance. Must not be null.
+         * @return this builder instance
+         * @throws IllegalArgumentException if jsonMapper is null
+         */
+        public Builder jsonMapper(McpJsonMapper jsonMapper) {
+            Assert.notNull(jsonMapper, "ObjectMapper must not be null");
+            this.jsonMapper = jsonMapper;
+            return this;
+        }
 
-		/**
+
+        /**
 		 * Sets the endpoint URI where clients should send their JSON-RPC messages.
 		 * @param messageEndpoint The message endpoint URI. Must not be null.
 		 * @return this builder instance
@@ -247,12 +245,12 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 		 * @throws IllegalStateException if required parameters are not set
 		 */
 		public WebRxStatelessServerTransport build() {
-			Assert.notNull(objectMapper, "ObjectMapper must be set");
 			Assert.notNull(mcpEndpoint, "Message endpoint must be set");
 
-			return new WebRxStatelessServerTransport(objectMapper, mcpEndpoint, contextExtractor);
+			return new WebRxStatelessServerTransport(
+                    jsonMapper == null ? McpJsonMapper.getDefault() : jsonMapper,
+                     mcpEndpoint,
+                    contextExtractor);
 		}
-
 	}
-
 }

@@ -4,27 +4,29 @@
 
 package io.modelcontextprotocol.client.transport;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.jackson.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpSchema.JSONRPCRequest;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Timeout;
+import org.junit.jupiter.api.*;
 import org.noear.solon.net.http.HttpUtilsBuilder;
 import org.noear.solon.net.http.textstream.ServerSentEvent;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
+import static io.modelcontextprotocol.util.McpJsonMapperUtils.JSON_MAPPER;
+import static org.assertj.core.api.Assertions.*;
 
 /**
  * Tests for the {@link WebRxSseClientTransport} class.
@@ -37,50 +39,73 @@ class WebRxSseClientTransportTests {
 	static String host = "http://localhost:3001";
 
 	@SuppressWarnings("resource")
-	GenericContainer<?> container = new GenericContainer<>("docker.io/tzolov/mcp-everything-server:v1")
+	static GenericContainer<?> container = new GenericContainer<>("docker.io/tzolov/mcp-everything-server:v3")
+		.withCommand("node dist/index.js sse")
 		.withLogConsumer(outputFrame -> System.out.println(outputFrame.getUtf8String()))
 		.withExposedPorts(3001)
 		.waitingFor(Wait.forHttp("/").forStatusCode(404));
 
-	private TestWebRxSseClientTransport transport;
+	private TestSseClientTransport transport;
+
+	private HttpUtilsBuilder webClientBuilder;
 
 	// Test class to access protected methods
-	static class TestWebRxSseClientTransport extends WebRxSseClientTransport {
+	static class TestSseClientTransport extends WebRxSseClientTransport {
 
 		private final AtomicInteger inboundMessageCount = new AtomicInteger(0);
 
 		private Sinks.Many<ServerSentEvent> events = Sinks.many().unicast().onBackpressureBuffer();
 
-		public TestWebRxSseClientTransport(String baseUri) {
-			super(new HttpUtilsBuilder().baseUri(baseUri));
+		public TestSseClientTransport(HttpUtilsBuilder webClientBuilder, McpJsonMapper jsonMapper) {
+			super(webClientBuilder, jsonMapper);
+		}
+
+		@Override
+		protected Flux<ServerSentEvent> eventStream() {
+			return super.eventStream().mergeWith(events.asFlux());
+		}
+
+		public String getLastEndpoint() {
+			return messageEndpointSink.asMono().block();
 		}
 
 		public int getInboundMessageCount() {
 			return inboundMessageCount.get();
 		}
 
+		public void simulateSseComment(String comment) {
+			events.tryEmitNext(ServerSentEvent.builder().comment(comment).build());
+			inboundMessageCount.incrementAndGet();
+		}
+
 		public void simulateEndpointEvent(String jsonMessage) {
-			events.tryEmitNext(new ServerSentEvent(null,"endpoint",jsonMessage,null));
+			events.tryEmitNext(ServerSentEvent.builder().event("endpoint").data(jsonMessage).build());
 			inboundMessageCount.incrementAndGet();
 		}
 
 		public void simulateMessageEvent(String jsonMessage) {
-			events.tryEmitNext(new ServerSentEvent(null,"message",jsonMessage,null));
+			events.tryEmitNext(ServerSentEvent.builder().event("message").data(jsonMessage).build());
 			inboundMessageCount.incrementAndGet();
 		}
 
 	}
 
-	void startContainer() {
+	@BeforeAll
+	static void startContainer() {
 		container.start();
 		int port = container.getMappedPort(3001);
 		host = "http://" + container.getHost() + ":" + port;
 	}
 
+	@AfterAll
+	static void cleanup() {
+		container.stop();
+	}
+
 	@BeforeEach
 	void setUp() {
-		startContainer();
-		transport = new TestWebRxSseClientTransport(host);
+		webClientBuilder = new HttpUtilsBuilder().baseUri(host);
+		transport = new TestSseClientTransport(webClientBuilder, JSON_MAPPER);
 		transport.connect(Function.identity()).block();
 	}
 
@@ -89,11 +114,69 @@ class WebRxSseClientTransportTests {
 		if (transport != null) {
 			assertThatCode(() -> transport.closeGracefully().block(Duration.ofSeconds(10))).doesNotThrowAnyException();
 		}
-		cleanup();
 	}
 
-	void cleanup() {
-		container.stop();
+	@Test
+	void testEndpointEventHandling() {
+		assertThat(transport.getLastEndpoint()).startsWith("/message?");
+	}
+
+	@Test
+	void constructorValidation() {
+		assertThatThrownBy(() -> new WebRxSseClientTransport(null, JSON_MAPPER))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("WebClient.Builder must not be null");
+
+		assertThatThrownBy(() -> new WebRxSseClientTransport(webClientBuilder, null))
+			.isInstanceOf(IllegalArgumentException.class)
+			.hasMessageContaining("jsonMapper must not be null");
+	}
+
+	@Test
+	void testBuilderPattern() {
+		// Test default builder
+		WebRxSseClientTransport transport1 = WebRxSseClientTransport.builder(webClientBuilder).build();
+		assertThatCode(() -> transport1.closeGracefully().block()).doesNotThrowAnyException();
+
+		// Test builder with custom ObjectMapper
+		ObjectMapper customMapper = new ObjectMapper();
+		WebRxSseClientTransport transport2 = WebRxSseClientTransport.builder(webClientBuilder)
+			.jsonMapper(new JacksonMcpJsonMapper(customMapper))
+			.build();
+		assertThatCode(() -> transport2.closeGracefully().block()).doesNotThrowAnyException();
+
+		// Test builder with custom SSE endpoint
+		WebRxSseClientTransport transport3 = WebRxSseClientTransport.builder(webClientBuilder)
+			.sseEndpoint("/custom-sse")
+			.build();
+		assertThatCode(() -> transport3.closeGracefully().block()).doesNotThrowAnyException();
+
+		// Test builder with all custom parameters
+		WebRxSseClientTransport transport4 = WebRxSseClientTransport.builder(webClientBuilder)
+			.sseEndpoint("/custom-sse")
+			.build();
+		assertThatCode(() -> transport4.closeGracefully().block()).doesNotThrowAnyException();
+	}
+
+	@Test
+	void testCommentSseMessage() {
+		// If the line starts with a character (:) are comment lins and should be ingored
+		// https://html.spec.whatwg.org/multipage/server-sent-events.html#event-stream-interpretation
+
+		CopyOnWriteArrayList<Throwable> droppedErrors = new CopyOnWriteArrayList<>();
+		reactor.core.publisher.Hooks.onErrorDropped(droppedErrors::add);
+
+		try {
+			// Simulate receiving the SSE comment line
+			transport.simulateSseComment("sse comment");
+
+			StepVerifier.create(transport.closeGracefully()).verifyComplete();
+
+			assertThat(droppedErrors).hasSize(0);
+		}
+		finally {
+			reactor.core.publisher.Hooks.resetOnErrorDropped();
+		}
 	}
 
 	@Test
@@ -196,8 +279,10 @@ class WebRxSseClientTransportTests {
 
 	@Test
 	void testRetryBehavior() {
-		// Create a client that simulates connection failures
-		HttpClientSseClientTransport failingTransport = new HttpClientSseClientTransport("http://non-existent-host");
+		// Create a WebClient that simulates connection failures
+		HttpUtilsBuilder failingWebClientBuilder = new HttpUtilsBuilder().baseUri("http://non-existent-host");
+
+		WebRxSseClientTransport failingTransport = WebRxSseClientTransport.builder(failingWebClientBuilder).build();
 
 		// Verify that the transport attempts to reconnect
 		StepVerifier.create(Mono.delay(Duration.ofSeconds(2))).expectNextCount(1).verifyComplete();

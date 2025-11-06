@@ -26,7 +26,6 @@ class WebMcpStreamableSyncServerTransportTests extends AbstractMcpSyncServerTest
 
 	private McpStreamableServerTransportProvider createMcpTransportProvider() {
 		WebRxStreamableServerTransportProvider transportProvider = WebRxStreamableServerTransportProvider.builder()
-				.objectMapper(new ObjectMapper())
 				.mcpEndpoint(MCP_ENDPOINT)
 				.build();
 

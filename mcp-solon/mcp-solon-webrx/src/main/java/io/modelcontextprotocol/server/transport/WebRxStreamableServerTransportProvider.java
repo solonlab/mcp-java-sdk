@@ -4,15 +4,13 @@
 
 package io.modelcontextprotocol.server.transport;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.server.DefaultMcpTransportContext;
-import io.modelcontextprotocol.server.McpTransportContext;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.json.McpJsonMapper;
+import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.server.McpTransportContextExtractor;
 import io.modelcontextprotocol.spec.*;
 import io.modelcontextprotocol.util.Assert;
 import io.modelcontextprotocol.util.KeepAliveScheduler;
-import io.modelcontextprotocol.util.Utils;
 import org.noear.solon.SolonApp;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Entity;
@@ -74,7 +72,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 	 */
 	private final boolean disallowDelete;
 
-	private final ObjectMapper objectMapper;
+	private final McpJsonMapper jsonMapper;
 
 	private McpStreamableServerSession.Factory sessionFactory;
 
@@ -85,8 +83,6 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 
 	private McpTransportContextExtractor<Context> contextExtractor;
 
-	// private Function<ServerRequest, McpTransportContext> contextExtractor = req -> new
-	// DefaultMcpTransportContext();
 
 	/**
 	 * Flag indicating if the transport is shutting down.
@@ -97,21 +93,21 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 
 	/**
 	 * Constructs a new WebMvcStreamableServerTransportProvider instance.
-	 * @param objectMapper The ObjectMapper to use for JSON serialization/deserialization
+	 * @param jsonMapper The ObjectMapper to use for JSON serialization/deserialization
 	 * of messages.
 	 * @param mcpEndpoint The endpoint URI where clients should send their JSON-RPC
 	 * messages via HTTP. This endpoint will handle GET, POST, and DELETE requests.
 	 * @param disallowDelete Whether to disallow DELETE requests on the endpoint.
 	 * @throws IllegalArgumentException if any parameter is null
 	 */
-	private WebRxStreamableServerTransportProvider(ObjectMapper objectMapper, String mcpEndpoint,
+	private WebRxStreamableServerTransportProvider(McpJsonMapper jsonMapper, String mcpEndpoint,
                                                    boolean disallowDelete, McpTransportContextExtractor<Context> contextExtractor,
                                                    Duration keepAliveInterval) {
-		Assert.notNull(objectMapper, "ObjectMapper must not be null");
+		Assert.notNull(jsonMapper, "ObjectMapper must not be null");
 		Assert.notNull(mcpEndpoint, "MCP endpoint must not be null");
 		Assert.notNull(contextExtractor, "McpTransportContextExtractor must not be null");
 
-		this.objectMapper = objectMapper;
+		this.jsonMapper = jsonMapper;
 		this.mcpEndpoint = mcpEndpoint;
 		this.disallowDelete = disallowDelete;
 		this.contextExtractor = contextExtractor;
@@ -227,7 +223,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 					McpError mcpError = (McpError) entity.body();
 					entity.body(mcpError.getMessage());
 				} else if (entity.body() instanceof McpSchema.JSONRPCResponse) {
-					entity.body(objectMapper.writeValueAsString(entity.body()));
+					entity.body(jsonMapper.writeValueAsString(entity.body()));
 				}
 			}
 		}
@@ -245,7 +241,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 			return new Entity().status(StatusCodes.CODE_BAD_REQUEST).body("Invalid Accept header. Expected TEXT_EVENT_STREAM");
 		}
 
-		McpTransportContext transportContext = this.contextExtractor.extract(request, new DefaultMcpTransportContext());
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
 
 		if (!request.headerMap().containsKey(HttpHeaders.MCP_SESSION_ID)) {
 			return new Entity().status(StatusCodes.CODE_BAD_REQUEST).body("Session ID required in mcp-session-id header");
@@ -328,7 +324,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 					McpError mcpError = (McpError) entity.body();
 					entity.body(mcpError.getMessage());
 				} else if (entity.body() instanceof McpSchema.JSONRPCResponse) {
-					entity.body(objectMapper.writeValueAsString(entity.body()));
+					entity.body(jsonMapper.writeValueAsString(entity.body()));
 				}
 			}
 		}
@@ -347,19 +343,19 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 					.body(new McpError("Invalid Accept headers. Expected TEXT_EVENT_STREAM and APPLICATION_JSON"));
 		}
 
-		McpTransportContext transportContext = this.contextExtractor.extract(request, new DefaultMcpTransportContext());
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
 
 		try {
 			String body = request.body();
-			McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(objectMapper, body);
+			McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(jsonMapper, body);
 
 			// Handle initialization request
 			if (message instanceof McpSchema.JSONRPCRequest) {
 				McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest) message;
 
 				if (jsonrpcRequest.method().equals(McpSchema.METHOD_INITIALIZE)) {
-					McpSchema.InitializeRequest initializeRequest = objectMapper.convertValue(jsonrpcRequest.params(),
-							new TypeReference<McpSchema.InitializeRequest>() {
+					McpSchema.InitializeRequest initializeRequest = jsonMapper.convertValue(jsonrpcRequest.params(),
+							new TypeRef<McpSchema.InitializeRequest>() {
 							});
 					McpStreamableServerSession.McpStreamableServerSessionInit init = this.sessionFactory
 							.startSession(initializeRequest);
@@ -459,7 +455,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 				McpError mcpError = (McpError) entity.body();
 				entity.body(mcpError.getMessage());
 			} else if (entity.body() instanceof McpSchema.JSONRPCResponse) {
-				entity.body(objectMapper.writeValueAsString(entity.body()));
+				entity.body(jsonMapper.writeValueAsString(entity.body()));
 			}
 		}
 
@@ -475,7 +471,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 			return new Entity().status(StatusCodes.CODE_METHOD_NOT_ALLOWED);
 		}
 
-		McpTransportContext transportContext = this.contextExtractor.extract(request, new DefaultMcpTransportContext());
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
 
 		if (!request.headerMap().containsKey(HttpHeaders.MCP_SESSION_ID)) {
 			return new Entity().status(StatusCodes.CODE_BAD_REQUEST).body("Session ID required in mcp-session-id header");
@@ -561,7 +557,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 						return;
 					}
 
-					String jsonText = objectMapper.writeValueAsString(message);
+					String jsonText = jsonMapper.writeValueAsString(message);
 					this.sseEmitter.send(new SseEvent().id(messageId != null ? messageId : this.sessionId)
 							.name(MESSAGE_EVENT_TYPE)
 							.data(jsonText));
@@ -591,8 +587,8 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 		 * @param <T> The target type
 		 */
 		@Override
-		public <T> T unmarshalFrom(Object data, TypeReference<T> typeRef) {
-			return objectMapper.convertValue(data, typeRef);
+		public <T> T unmarshalFrom(Object data, TypeRef<T> typeRef) {
+			return jsonMapper.convertValue(data, typeRef);
 		}
 
 		/**
@@ -642,31 +638,29 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 	 */
 	public static class Builder {
 
-		private ObjectMapper objectMapper;
+		private McpJsonMapper jsonMapper;
 
 		private String mcpEndpoint = "/mcp";
 
 		private boolean disallowDelete = false;
 
-		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest, context) -> {
-			context.put(Context.class.getName(), serverRequest);
-			return context;
-		};
+		private McpTransportContextExtractor<Context> contextExtractor = (
+                serverRequest) -> McpTransportContext.EMPTY;
 
 		private Duration keepAliveInterval;
 
-		/**
-		 * Sets the ObjectMapper to use for JSON serialization/deserialization of MCP
-		 * messages.
-		 * @param objectMapper The ObjectMapper instance. Must not be null.
-		 * @return this builder instance
-		 * @throws IllegalArgumentException if objectMapper is null
-		 */
-		public Builder objectMapper(ObjectMapper objectMapper) {
-			Assert.notNull(objectMapper, "ObjectMapper must not be null");
-			this.objectMapper = objectMapper;
-			return this;
-		}
+        /**
+         * Sets the McpJsonMapper to use for JSON serialization/deserialization of MCP
+         * messages.
+         * @param jsonMapper The McpJsonMapper instance. Must not be null.
+         * @return this builder instance
+         * @throws IllegalArgumentException if jsonMapper is null
+         */
+        public Builder jsonMapper(McpJsonMapper jsonMapper) {
+            Assert.notNull(jsonMapper, "McpJsonMapper must not be null");
+            this.jsonMapper = jsonMapper;
+            return this;
+        }
 
 		/**
 		 * Sets the endpoint URI where clients should send their JSON-RPC messages.
@@ -725,12 +719,14 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 		 * @throws IllegalStateException if required parameters are not set
 		 */
 		public WebRxStreamableServerTransportProvider build() {
-			Assert.notNull(this.objectMapper, "ObjectMapper must be set");
 			Assert.notNull(this.mcpEndpoint, "MCP endpoint must be set");
 
-			return new WebRxStreamableServerTransportProvider(this.objectMapper, this.mcpEndpoint, this.disallowDelete,
-					this.contextExtractor, this.keepAliveInterval);
+			return new WebRxStreamableServerTransportProvider(
+                    jsonMapper == null ? McpJsonMapper.getDefault() : jsonMapper,
+                    this.mcpEndpoint,
+                    this.disallowDelete,
+					this.contextExtractor,
+                    this.keepAliveInterval);
 		}
-
 	}
 }
