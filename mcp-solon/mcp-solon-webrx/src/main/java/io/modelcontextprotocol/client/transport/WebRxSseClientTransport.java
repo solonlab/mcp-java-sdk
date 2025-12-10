@@ -4,8 +4,6 @@
 
 package io.modelcontextprotocol.client.transport;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.json.TypeRef;
 import io.modelcontextprotocol.spec.*;
@@ -124,7 +122,7 @@ public class WebRxSseClientTransport implements McpClientTransport {
 	/**
 	 * Constructs a new SseClientTransport with the specified WebClient builder and
 	 * ObjectMapper. Initializes both inbound and outbound message processing pipelines.
-	 * @param webClientBuilder the WebClient.Builder to use for creating the WebClient
+	 * @param webClientBuilder the HttpUtilsBuilder to use for creating the WebClient
 	 * instance
 	 * @param jsonMapper the ObjectMapper to use for JSON processing
 	 * @throws IllegalArgumentException if either parameter is null
@@ -136,7 +134,7 @@ public class WebRxSseClientTransport implements McpClientTransport {
 	/**
 	 * Constructs a new SseClientTransport with the specified WebClient builder and
 	 * ObjectMapper. Initializes both inbound and outbound message processing pipelines.
-	 * @param webClientBuilder the WebClient.Builder to use for creating the WebClient
+	 * @param webClientBuilder the HttpUtilsBuilder to use for creating the WebClient
 	 * instance
 	 * @param jsonMapper the ObjectMapper to use for JSON processing
 	 * @param sseEndpoint the SSE endpoint URI to use for establishing the connection
@@ -144,8 +142,8 @@ public class WebRxSseClientTransport implements McpClientTransport {
 	 */
 	public WebRxSseClientTransport(HttpUtilsBuilder webClientBuilder, McpJsonMapper jsonMapper,
                                    String sseEndpoint) {
-		Assert.notNull(jsonMapper, "ObjectMapper must not be null");
-		Assert.notNull(webClientBuilder, "WebClient.Builder must not be null");
+		Assert.notNull(jsonMapper, "jsonMapper must not be null");
+		Assert.notNull(webClientBuilder, "webClientBuilder must not be null");
 		Assert.hasText(sseEndpoint, "SSE endpoint must not be null or empty");
 
 		this.jsonMapper = jsonMapper;
@@ -177,8 +175,6 @@ public class WebRxSseClientTransport implements McpClientTransport {
 	 * @param handler a function that processes incoming JSON-RPC messages and returns
 	 * responses
 	 * @return a Mono that completes when the connection is fully established
-	 * @throws McpError if there's an error processing SSE events or if an unrecognized
-	 * event type is received
 	 */
 	@Override
 	public Mono<Void> connect(Function<Mono<JSONRPCMessage>, Mono<JSONRPCMessage>> handler) {
@@ -195,7 +191,7 @@ public class WebRxSseClientTransport implements McpClientTransport {
 				else {
 					// TODO: clarify with the spec if multiple events can be
 					// received
-					s.error(new McpError("Failed to handle SSE endpoint event"));
+					s.error(new RuntimeException("Failed to handle SSE endpoint event"));
 				}
 			}
 			else if (MESSAGE_EVENT_TYPE.equals(event.event())) {
@@ -239,7 +235,6 @@ public class WebRxSseClientTransport implements McpClientTransport {
 			}
 			try {
 				String jsonText = this.jsonMapper.writeValueAsString(message);
-
 				return Mono.fromFuture(webClientBuilder.build(messageEndpointUri)
 								.contentType(MimeType.APPLICATION_JSON_VALUE)
 								.header(HttpHeaders.PROTOCOL_VERSION, MCP_PROTOCOL_VERSION)
@@ -264,22 +259,22 @@ public class WebRxSseClientTransport implements McpClientTransport {
 
 	/**
 	 * Initializes and starts the inbound SSE event processing. Establishes the SSE
-     * connection and sets up event handling for both message and endpoint events.
-     * Includes automatic retry logic for handling transient connection failures.
-     */
+	 * connection and sets up event handling for both message and endpoint events.
+	 * Includes automatic retry logic for handling transient connection failures.
+	 */
 	// visible for tests
 	protected Flux<ServerSentEvent> eventStream() {// @formatter:off
 		return Flux.from(this.webClientBuilder.build(this.sseEndpoint)
 				.accept(MimeType.TEXT_EVENT_STREAM_VALUE)
 				.header(HttpHeaders.PROTOCOL_VERSION, MCP_PROTOCOL_VERSION)
 				.execAsSseStream("GET"))
-			.retryWhen(Retry.from(retrySignal -> retrySignal.handle(inboundRetryHandler)));
+				.retryWhen(Retry.from(retrySignal -> retrySignal.handle(inboundRetryHandler)));
 	} // @formatter:on
 
 	/**
 	 * Retry handler for the inbound SSE stream. Implements the retry logic for handling
-     * connection failures and other errors.
-     */
+	 * connection failures and other errors.
+	 */
 	private BiConsumer<RetrySignal, SynchronousSink<Object>> inboundRetryHandler = (retrySpec, sink) -> {
 		if (isClosing) {
 			logger.debug("SSE connection closed during shutdown");
@@ -296,26 +291,25 @@ public class WebRxSseClientTransport implements McpClientTransport {
 	};
 
 	/**
-     * Implements graceful shutdown of the transport. Cleans up all resources including
-     * subscriptions and schedulers. Ensures orderly shutdown of both inbound and outbound
-     * message processing.
-     *
-     * @return a Mono that completes when shutdown is finished
-     */
+	 * Implements graceful shutdown of the transport. Cleans up all resources including
+	 * subscriptions and schedulers. Ensures orderly shutdown of both inbound and outbound
+	 * message processing.
+	 * @return a Mono that completes when shutdown is finished
+	 */
 	@Override
 	public Mono<Void> closeGracefully() { // @formatter:off
 		return Mono.fromRunnable(() -> {
-			isClosing = true;
-			
-			// Dispose of subscriptions
-			
-			if (inboundSubscription != null) {
-				inboundSubscription.dispose();
-			}
+					isClosing = true;
 
-		})
-		.then()
-		.subscribeOn(Schedulers.boundedElastic());
+					// Dispose of subscriptions
+
+					if (inboundSubscription != null) {
+						inboundSubscription.dispose();
+					}
+
+				})
+				.then()
+				.subscribeOn(Schedulers.boundedElastic());
 	} // @formatter:on
 
 	/**
@@ -328,7 +322,7 @@ public class WebRxSseClientTransport implements McpClientTransport {
 	 * type conversion capabilities to handle complex object structures.
 	 * @param <T> the target type to convert the data into
 	 * @param data the source object to convert
-	 * @param typeRef the TypeReference describing the target type
+	 * @param typeRef the TypeRef describing the target type
 	 * @return the unmarshalled object of type T
 	 * @throws IllegalArgumentException if the conversion cannot be performed
 	 */
@@ -339,7 +333,7 @@ public class WebRxSseClientTransport implements McpClientTransport {
 
 	/**
 	 * Creates a new builder for {@link WebRxSseClientTransport}.
-	 * @param webClientBuilder the WebClient.Builder to use for creating the WebClient
+	 * @param webClientBuilder the HttpUtilsBuilder to use for creating the WebClient
 	 * instance
 	 * @return a new builder instance
 	 */
@@ -359,11 +353,11 @@ public class WebRxSseClientTransport implements McpClientTransport {
 		private McpJsonMapper jsonMapper;
 
 		/**
-		 * Creates a new builder with the specified WebClient.Builder.
-		 * @param webClientBuilder the WebClient.Builder to use
+		 * Creates a new builder with the specified HttpUtilsBuilder.
+		 * @param webClientBuilder the HttpUtilsBuilder to use
 		 */
 		public Builder(HttpUtilsBuilder webClientBuilder) {
-			Assert.notNull(webClientBuilder, "WebClient.Builder must not be null");
+			Assert.notNull(webClientBuilder, "webClientBuilder must not be null");
 			this.webClientBuilder = webClientBuilder;
 		}
 
