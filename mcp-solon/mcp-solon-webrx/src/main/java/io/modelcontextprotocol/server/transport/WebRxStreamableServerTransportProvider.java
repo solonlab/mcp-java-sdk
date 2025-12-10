@@ -61,6 +61,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 	 */
 	public static final String DEFAULT_BASE_URL = "";
 
+
 	/**
 	 * The endpoint URI where clients should send their JSON-RPC messages. Defaults to
 	 * "/mcp".
@@ -100,10 +101,12 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 	 * @param disallowDelete Whether to disallow DELETE requests on the endpoint.
 	 * @throws IllegalArgumentException if any parameter is null
 	 */
-	private WebRxStreamableServerTransportProvider(McpJsonMapper jsonMapper, String mcpEndpoint,
-                                                   boolean disallowDelete, McpTransportContextExtractor<Context> contextExtractor,
+	private WebRxStreamableServerTransportProvider(McpJsonMapper jsonMapper,
+												   String mcpEndpoint,
+                                                   boolean disallowDelete,
+												   McpTransportContextExtractor<Context> contextExtractor,
                                                    Duration keepAliveInterval) {
-		Assert.notNull(jsonMapper, "ObjectMapper must not be null");
+		Assert.notNull(jsonMapper, "McpJsonMapper must not be null");
 		Assert.notNull(mcpEndpoint, "MCP endpoint must not be null");
 		Assert.notNull(contextExtractor, "McpTransportContextExtractor must not be null");
 
@@ -114,15 +117,12 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 
 		if (keepAliveInterval != null) {
 			this.keepAliveScheduler = KeepAliveScheduler
-				.builder(() -> (isClosing) ? Flux.empty() : Flux.fromIterable(this.sessions.values()))
-				.initialDelay(keepAliveInterval)
-				.interval(keepAliveInterval)
-				.build();
+					.builder(() -> (isClosing) ? Flux.empty() : Flux.fromIterable(this.sessions.values()))
+					.initialDelay(keepAliveInterval)
+					.interval(keepAliveInterval)
+					.build();
 
 			this.keepAliveScheduler.start();
-		}
-		else {
-			logger.warn("Keep-alive interval is not set or invalid. No keep-alive will be scheduled.");
 		}
 	}
 
@@ -142,7 +142,8 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 
 	@Override
 	public List<String> protocolVersions() {
-		return Arrays.asList(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26);
+		return Arrays.asList(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26,
+				ProtocolVersions.MCP_2025_06_18);
 	}
 
 	@Override
@@ -213,8 +214,6 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 	 * @return A ServerResponse configured for SSE communication, or an error response
 	 */
 	private void handleGet(Context request) throws Throwable {
-		request.contentType("");
-
 		Object returnValue = handleGetDo(request);
 		if (returnValue instanceof Entity) {
 			Entity entity = (Entity) returnValue;
@@ -314,8 +313,6 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 	 * @return A ServerResponse indicating success or appropriate error status
 	 */
 	private void handlePost(Context request) throws Throwable {
-		request.contentType("");
-
 		Object returnValue = handlePostDo(request);
 		if (returnValue instanceof Entity) {
 			Entity entity = (Entity) returnValue;
@@ -382,6 +379,11 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 			}
 
 			String sessionId = request.header(HttpHeaders.MCP_SESSION_ID);
+
+			if (sessionId == null || sessionId.isEmpty()) {
+				return new Entity().status(StatusCodes.CODE_BAD_REQUEST).body(new McpError("Session ID missing"));
+			}
+
 			McpStreamableServerSession session = this.sessions.get(sessionId);
 
 			if (session == null) {
@@ -447,8 +449,6 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 	 * @return A ServerResponse indicating success or appropriate error status
 	 */
 	private void handleDelete(Context request) throws Throwable {
-		request.contentType("");
-
 		Entity entity = handleDeleteDo(request);
 		if (entity.body() != null) {
 			if (entity.body() instanceof McpError) {
@@ -649,18 +649,18 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 
 		private Duration keepAliveInterval;
 
-        /**
-         * Sets the McpJsonMapper to use for JSON serialization/deserialization of MCP
-         * messages.
-         * @param jsonMapper The McpJsonMapper instance. Must not be null.
-         * @return this builder instance
-         * @throws IllegalArgumentException if jsonMapper is null
-         */
-        public Builder jsonMapper(McpJsonMapper jsonMapper) {
-            Assert.notNull(jsonMapper, "McpJsonMapper must not be null");
-            this.jsonMapper = jsonMapper;
-            return this;
-        }
+		/**
+		 * Sets the McpJsonMapper to use for JSON serialization/deserialization of MCP
+		 * messages.
+		 * @param jsonMapper The McpJsonMapper instance. Must not be null.
+		 * @return this builder instance
+		 * @throws IllegalArgumentException if jsonMapper is null
+		 */
+		public Builder jsonMapper(McpJsonMapper jsonMapper) {
+			Assert.notNull(jsonMapper, "McpJsonMapper must not be null");
+			this.jsonMapper = jsonMapper;
+			return this;
+		}
 
 		/**
 		 * Sets the endpoint URI where clients should send their JSON-RPC messages.

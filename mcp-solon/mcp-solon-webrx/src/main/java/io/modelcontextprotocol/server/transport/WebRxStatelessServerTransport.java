@@ -1,6 +1,5 @@
 package io.modelcontextprotocol.server.transport;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.server.McpStatelessServerHandler;
@@ -24,11 +23,9 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Implementation of a WebMVC based {@link McpStatelessServerTransport}.
+ * Implementation of a WebFlux based {@link McpStatelessServerTransport}.
  *
- * @author Christian Tzolov
- * @author noear
- * @see McpStatelessServerTransport
+ * @author Dariusz Jędrzejczyk
  */
 public class WebRxStatelessServerTransport implements McpStatelessServerTransport, IMcpHttpServerTransport {
 
@@ -46,7 +43,7 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 
 	private WebRxStatelessServerTransport(McpJsonMapper jsonMapper, String mcpEndpoint,
                                           McpTransportContextExtractor<Context> contextExtractor) {
-		Assert.notNull(jsonMapper, "objectMapper must not be null");
+		Assert.notNull(jsonMapper, "jsonMapper must not be null");
 		Assert.notNull(mcpEndpoint, "mcpEndpoint must not be null");
 		Assert.notNull(contextExtractor, "contextExtractor must not be null");
 
@@ -84,14 +81,10 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 	}
 
 	private void handleGet(Context request) {
-		request.contentType("");
-
 		request.status(StatusCodes.CODE_METHOD_NOT_ALLOWED);
 	}
 
 	private void handlePost(Context request) throws Throwable {
-		request.contentType("");
-
 		Entity entity = handlePostDo(request);
 		if (entity.body() != null) {
 			if (entity.body() instanceof McpError) {
@@ -196,21 +189,20 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 			// used by a static method
 		}
 
-        /**
-         * Sets the ObjectMapper to use for JSON serialization/deserialization of MCP
-         * messages.
-         * @param jsonMapper The ObjectMapper instance. Must not be null.
-         * @return this builder instance
-         * @throws IllegalArgumentException if jsonMapper is null
-         */
-        public Builder jsonMapper(McpJsonMapper jsonMapper) {
-            Assert.notNull(jsonMapper, "ObjectMapper must not be null");
-            this.jsonMapper = jsonMapper;
-            return this;
-        }
+		/**
+		 * Sets the ObjectMapper to use for JSON serialization/deserialization of MCP
+		 * messages.
+		 * @param jsonMapper The ObjectMapper instance. Must not be null.
+		 * @return this builder instance
+		 * @throws IllegalArgumentException if jsonMapper is null
+		 */
+		public Builder jsonMapper(McpJsonMapper jsonMapper) {
+			Assert.notNull(jsonMapper, "ObjectMapper must not be null");
+			this.jsonMapper = jsonMapper;
+			return this;
+		}
 
-
-        /**
+		/**
 		 * Sets the endpoint URI where clients should send their JSON-RPC messages.
 		 * @param messageEndpoint The message endpoint URI. Must not be null.
 		 * @return this builder instance
