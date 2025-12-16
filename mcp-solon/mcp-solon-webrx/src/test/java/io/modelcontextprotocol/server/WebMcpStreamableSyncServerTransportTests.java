@@ -26,7 +26,7 @@ class WebMcpStreamableSyncServerTransportTests extends AbstractMcpSyncServerTest
 
 	private McpStreamableServerTransportProvider createMcpTransportProvider() {
 		WebRxStreamableServerTransportProvider transportProvider = WebRxStreamableServerTransportProvider.builder()
-				.mcpEndpoint(MCP_ENDPOINT)
+				.messageEndpoint(MCP_ENDPOINT)
 				.build();
 
 		Solon.start(WebMcpStreamableSyncServerTransportTests.class, new String[]{"-server.port=" + PORT}, app -> {

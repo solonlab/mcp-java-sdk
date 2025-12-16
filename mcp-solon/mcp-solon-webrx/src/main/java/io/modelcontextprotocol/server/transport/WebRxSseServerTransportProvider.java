@@ -15,20 +15,20 @@ import org.noear.solon.SolonApp;
 import org.noear.solon.core.handle.Context;
 import org.noear.solon.core.handle.Entity;
 import org.noear.solon.core.handle.StatusCodes;
-import org.noear.solon.web.sse.SseEmitter;
+import org.noear.solon.core.util.MimeType;
+import org.noear.solon.rx.handle.RxEntity;
 import org.noear.solon.web.sse.SseEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Server-side implementation of the Model Context Protocol (MCP) transport layer using
@@ -81,8 +81,6 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 	 */
 	public static final String ENDPOINT_EVENT_TYPE = "endpoint";
 
-	private static final String MCP_PROTOCOL_VERSION = "2025-06-18";
-
 	/**
 	 * Default SSE endpoint path as specified by the MCP transport specification.
 	 */
@@ -111,7 +109,6 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 	 * Map of active client sessions, keyed by session ID.
 	 */
 	private final ConcurrentHashMap<String, McpServerSession> sessions = new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Context> sessionRequests = new ConcurrentHashMap<>();
 
     private McpTransportContextExtractor<Context> contextExtractor;
 
@@ -161,7 +158,6 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 		this.contextExtractor = contextExtractor;
 
 		if (keepAliveInterval != null) {
-
 			this.keepAliveScheduler = KeepAliveScheduler
 					.builder(() -> (isClosing) ? Flux.empty() : Flux.fromIterable(sessions.values()))
 					.initialDelay(keepAliveInterval)
@@ -187,7 +183,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 
 	@Override
 	public List<String> protocolVersions() {
-		return Arrays.asList(ProtocolVersions.MCP_2024_11_05);
+		return List.of(ProtocolVersions.MCP_2024_11_05);
 	}
 
 	@Override
@@ -230,10 +226,6 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 				.then();
 	}
 
-	// FIXME: This javadoc makes claims about using isClosing flag but it's not
-	// actually
-	// doing that.
-
 	/**
 	 * Initiates a graceful shutdown of all the sessions. This method ensures all active
 	 * sessions are properly closed and cleaned up.
@@ -254,337 +246,254 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 				});
 	}
 
+	private void handleSseConnection(Context ctx) throws Throwable{
+		Mono<Entity> entityMono = doHandleSseConnection(ctx);
+		ctx.returnValue(entityMono);
+	}
+
 	/**
-	 * Handles new SSE connection requests from clients by creating a new session and
-	 * establishing an SSE connection. This method:
-	 * <ul>
-	 * <li>Generates a unique session ID</li>
-	 * <li>Creates a new session with a WebMvcMcpSessionTransport</li>
-	 * <li>Sends an initial endpoint event to inform the client where to send
-	 * messages</li>
-	 * <li>Maintains the session in the sessions map</li>
-	 * </ul>
+	 * Handles new SSE connection requests from clients. Creates a new session for each
+	 * connection and sets up the SSE event stream.
 	 * @param request The incoming server request
-	 * @return A ServerResponse configured for SSE communication, or an error response if
-	 * the server is shutting down or the connection fails
+	 * @return A Mono which emits a response with the SSE event stream
 	 */
-	private void handleSseConnection(Context request) throws Throwable {
-		Object returnValue = handleSseConnectionDo(request);
-		if (returnValue instanceof Entity) {
-			Entity entity = (Entity) returnValue;
-			if (entity.body() != null) {
-				if (entity.body() instanceof McpError) {
-					McpError mcpError = (McpError) entity.body();
-					entity.body(mcpError.getMessage());
-				} else if (entity.body() instanceof McpSchema.JSONRPCResponse) {
-					entity.body(jsonMapper.writeValueAsString(entity.body()));
-				}
-			}
+	private Mono<Entity> doHandleSseConnection(Context request) {
+		if (isClosing) {
+			return RxEntity.status(StatusCodes.CODE_SERVICE_UNAVAILABLE).body("Server is shutting down");
 		}
 
-		request.returnValue(returnValue);
-	}
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
 
-	private Object handleSseConnectionDo(Context request) {
-		if (this.isClosing) {
-			return new Entity().status(StatusCodes.CODE_SERVICE_UNAVAILABLE).body("Server is shutting down");
-		}
+		return RxEntity.ok()
+				.contentType(MimeType.TEXT_EVENT_STREAM_VALUE)
+				.body(Flux.<SseEvent>create(sink -> {
+					WebFluxMcpSessionTransport sessionTransport = new WebFluxMcpSessionTransport(sink);
 
-		String sessionId = UUID.randomUUID().toString();
-		logger.debug("Creating new SSE connection for session: {}", sessionId);
+					McpServerSession session = sessionFactory.create(sessionTransport);
+					String sessionId = session.getId();
 
-		// Send initial endpoint event
-		try {
-			SseEmitter sseBuilder = new SseEmitter(0L);
-			sseBuilder.onCompletion(() -> {
-				logger.debug("SSE connection completed for session: {}", sessionId);
-				sessions.remove(sessionId);
-                sessionRequests.remove(sessionId);
-			});
-			sseBuilder.onTimeout(() -> {
-				logger.debug("SSE connection timed out for session: {}", sessionId);
-				sessions.remove(sessionId);
-                sessionRequests.remove(sessionId);
-			});
+					logger.debug("Created new SSE connection for session: {}", sessionId);
+					sessions.put(sessionId, session);
 
-			sseBuilder.onInited(emitter -> {
-				WebRxMcpSessionTransport sessionTransport = new WebRxMcpSessionTransport(sessionId, sseBuilder);
-				McpServerSession session = sessionFactory.create(sessionTransport);
-				this.sessions.put(sessionId, session);
-                this.sessionRequests.put(sessionId, request);
-
-				try {
-					sseBuilder.send(new SseEvent().id(sessionId)
-							.name(ENDPOINT_EVENT_TYPE)
-							.data(this.baseUrl + this.messageEndpoint + "?sessionId=" + sessionId));
-				} catch (Exception e) {
-					logger.error("Failed to send initial endpoint event: {}", e.getMessage());
-					sessions.remove(sessionId);
-					sessionRequests.remove(sessionId);
-					sseBuilder.error(e);
-				}
-			});
-
-			return sseBuilder;
-		}
-		catch (Exception e) {
-			logger.error("Failed to send initial endpoint event to session {}: {}", sessionId, e.getMessage());
-			sessions.remove(sessionId);
-            sessionRequests.remove(sessionId);
-
-			return new Entity().status(StatusCodes.CODE_INTERNAL_SERVER_ERROR);
-		}
+					// Send initial endpoint event
+					logger.debug("Sending initial endpoint event to session: {}", sessionId);
+					sink.next(new SseEvent().name(ENDPOINT_EVENT_TYPE).data(buildEndpointUrl(sessionId)));
+					sink.onCancel(() -> {
+						logger.debug("Session {} cancelled", sessionId);
+						sessions.remove(sessionId);
+					});
+				}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
 	}
 
 	/**
-	 * Handles incoming JSON-RPC messages from clients. This method:
+	 * Constructs the full message endpoint URL by combining the base URL, message path,
+	 * and the required session_id query parameter.
+	 * @param sessionId the unique session identifier
+	 * @return the fully qualified endpoint URL as a string
+	 */
+	private String buildEndpointUrl(String sessionId) {
+		return this.baseUrl + this.messageEndpoint + "?sessionId=" + sessionId;
+	}
+
+	/**
+	 * Handles incoming JSON-RPC messages from clients. Deserializes the message and
+	 * processes it through the configured message handler.
+	 *
+	 * <p>
+	 * The handler:
 	 * <ul>
-	 * <li>Deserializes the request body into a JSON-RPC message</li>
-	 * <li>Processes the message through the session's handle method</li>
-	 * <li>Returns appropriate HTTP responses based on the processing result</li>
+	 * <li>Deserializes the incoming JSON-RPC message</li>
+	 * <li>Passes it through the message handler chain</li>
+	 * <li>Returns appropriate HTTP responses based on processing results</li>
+	 * <li>Handles various error conditions with appropriate error responses</li>
 	 * </ul>
 	 * @param request The incoming server request containing the JSON-RPC message
-	 * @return A ServerResponse indicating success (200 OK) or appropriate error status
-	 * with error details in case of failures
+	 * @return A Mono emitting the response indicating the message processing result
 	 */
-	private void handleMessage(Context request) throws Throwable {
-		Entity entity = handleMessageDo(request);
-		if (entity.body() != null) {
-			if (entity.body() instanceof McpError) {
-				McpError mcpError = (McpError) entity.body();
-				entity.body(mcpError.getMessage());
-			} else if (entity.body() instanceof McpSchema.JSONRPCResponse) {
-				entity.body(jsonMapper.writeValueAsString(entity.body()));
-			}
-		}
-
-		request.returnValue(entity);
-	}
-
-	private Entity handleMessageDo(Context request) {
-		if (this.isClosing) {
-			return new Entity().status(StatusCodes.CODE_SERVICE_UNAVAILABLE).body("Server is shutting down");
-		}
-
-		String sessionId = request.param("sessionId");
-
-		if (sessionId == null || sessionId.isEmpty()) {
-			return new Entity().status(StatusCodes.CODE_BAD_REQUEST).body(new McpError("Session ID missing in message endpoint"));
-		}
-
-		McpServerSession session = sessions.get(sessionId);
-
-		if (session == null) {
-			return new Entity().status(StatusCodes.CODE_NOT_FOUND).body(new McpError("Session not found: " + sessionId));
-		}
-
-        Context sessionRequest = this.sessionRequests.get(sessionId);
-        McpTransportContext transportContext = this.contextExtractor.extract(sessionRequest);
-
-		try {
-			String body = request.body();
-			McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(jsonMapper, body);
-
-			// Process the message through the session's handle method
-			session.handle(message).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)).block(); // Block
-			// for
-			// WebMVC
-			// compatibility
-
-			return new Entity().status(StatusCodes.CODE_OK);
-		}
-		catch (IllegalArgumentException | IOException e) {
-			logger.error("Failed to deserialize message: {}", e.getMessage());
-			return new Entity().status(StatusCodes.CODE_BAD_REQUEST).body(new McpError("Invalid message format"));
-		}
-		catch (Exception e) {
-			logger.error("Error handling message: {}", e.getMessage());
-			return new Entity().status(StatusCodes.CODE_INTERNAL_SERVER_ERROR).body(new McpError(e.getMessage()));
-		}
+	private void handleMessage(Context request) throws Throwable{
+		Mono<Entity> entityMono = doHandleMessage(request);
+		request.returnValue(entityMono);
 	}
 
 	/**
-	 * Implementation of McpServerTransport for WebMVC SSE sessions. This class handles
-	 * the transport-level communication for a specific client session.
+	 * Handles incoming JSON-RPC messages from clients. Deserializes the message and
+	 * processes it through the configured message handler.
+	 *
+	 * <p>
+	 * The handler:
+	 * <ul>
+	 * <li>Deserializes the incoming JSON-RPC message</li>
+	 * <li>Passes it through the message handler chain</li>
+	 * <li>Returns appropriate HTTP responses based on processing results</li>
+	 * <li>Handles various error conditions with appropriate error responses</li>
+	 * </ul>
+	 * @param request The incoming server request containing the JSON-RPC message
+	 * @return A Mono emitting the response indicating the message processing result
 	 */
-	private class WebRxMcpSessionTransport implements McpServerTransport {
-
-		private final String sessionId;
-
-		private final SseEmitter sseBuilder;
-
-		/**
-		 * Lock to ensure thread-safe access to the SSE builder when sending messages.
-		 * This prevents concurrent modifications that could lead to corrupted SSE events.
-		 */
-		private final ReentrantLock sseBuilderLock = new ReentrantLock();
-
-		/**
-		 * Creates a new session transport with the specified ID and SSE builder.
-		 * @param sessionId The unique identifier for this session
-		 * @param sseBuilder The SSE builder for sending server events to the client
-		 */
-		WebRxMcpSessionTransport(String sessionId, SseEmitter sseBuilder) {
-			this.sessionId = sessionId;
-			this.sseBuilder = sseBuilder;
+	private Mono<Entity> doHandleMessage(Context request) throws Throwable {
+		if (isClosing) {
+			return RxEntity.status(StatusCodes.CODE_SERVICE_UNAVAILABLE).body("Server is shutting down");
 		}
 
-		/**
-		 * Sends a JSON-RPC message to the client through the SSE connection.
-		 * @param message The JSON-RPC message to send
-		 * @return A Mono that completes when the message has been sent
-		 */
+		if (request.paramMap().containsKey("sessionId") == false) {
+			return RxEntity.badRequest().body(new McpError("Session ID missing in message endpoint"));
+		}
+
+		McpServerSession session = sessions.get(request.param("sessionId"));
+
+		if (session == null) {
+			return RxEntity.status(StatusCodes.CODE_NOT_FOUND)
+					.body(new McpError("Session not found: " + request.param("sessionId")));
+		}
+
+		McpTransportContext transportContext = this.contextExtractor.extract(request);
+
+
+		return Mono.just(request.body()).flatMap(body -> {
+			try {
+				McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(jsonMapper, body);
+				return session.handle(message).flatMap(response -> RxEntity.ok().build()).onErrorResume(error -> {
+					logger.error("Error processing  message: {}", error.getMessage());
+					// TODO: instead of signalling the error, just respond with 200 OK
+					// - the error is signalled on the SSE connection
+					// return ServerResponse.ok().build();
+					return RxEntity.status(StatusCodes.CODE_INTERNAL_SERVER_ERROR)
+							.body(new McpError(error.getMessage()));
+				});
+			}
+			catch (IllegalArgumentException | IOException e) {
+				logger.error("Failed to deserialize message: {}", e.getMessage());
+				return RxEntity.badRequest().body(new McpError("Invalid message format"));
+			}
+		}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext));
+	}
+
+	private class WebFluxMcpSessionTransport implements McpServerTransport {
+
+		private final FluxSink<SseEvent> sink;
+
+		public WebFluxMcpSessionTransport(FluxSink<SseEvent> sink) {
+			this.sink = sink;
+		}
+
 		@Override
 		public Mono<Void> sendMessage(McpSchema.JSONRPCMessage message) {
-			return Mono.fromRunnable(() -> {
-				sseBuilderLock.lock();
+			return Mono.fromSupplier(() -> {
 				try {
-					String jsonText = jsonMapper.writeValueAsString(message);
-					sseBuilder.send(new SseEvent().id(sessionId).name(MESSAGE_EVENT_TYPE).data(jsonText));
+					return jsonMapper.writeValueAsString(message);
 				}
-				catch (Exception e) {
-					logger.error("Failed to send message: {}", e.getMessage());
-					sseBuilder.error(e);
+				catch (IOException e) {
+					throw Exceptions.propagate(e);
 				}
-				finally {
-					sseBuilderLock.unlock();
-				}
-			});
+			}).doOnNext(jsonText -> {
+				SseEvent event = new SseEvent()
+						.name(MESSAGE_EVENT_TYPE)
+						.data(jsonText);
+				sink.next(event);
+			}).doOnError(e -> {
+				// TODO log with sessionid
+				Throwable exception = Exceptions.unwrap(e);
+				sink.error(exception);
+			}).then();
 		}
 
-		/**
-		 * Converts data from one type to another using the configured McpJsonMapper.
-		 * @param data The source data object to convert
-		 * @param typeRef The target type reference
-		 * @param <T> The target type
-		 * @return The converted object of type T
-		 */
 		@Override
 		public <T> T unmarshalFrom(Object data, TypeRef<T> typeRef) {
 			return jsonMapper.convertValue(data, typeRef);
 		}
 
-		/**
-		 * Initiates a graceful shutdown of the transport.
-		 * @return A Mono that completes when the shutdown is complete
-		 */
 		@Override
 		public Mono<Void> closeGracefully() {
-			return Mono.fromRunnable(() -> {
-				sseBuilderLock.lock();
-				try {
-					sseBuilder.complete();
-				}
-				catch (Exception e) {
-					logger.warn("Failed to complete SSE builder: {}", e.getMessage());
-				}
-				finally {
-					sseBuilderLock.unlock();
-				}
-			});
+			return Mono.fromRunnable(sink::complete);
 		}
 
-		/**
-		 * Closes the transport immediately.
-		 */
 		@Override
 		public void close() {
-			sseBuilderLock.lock();
-			try {
-				sseBuilder.complete();
-			}
-			catch (Exception e) {
-				logger.warn("Failed to complete SSE builder: {}", e.getMessage());
-			}
-			finally {
-				sseBuilderLock.unlock();
-			}
+			sink.complete();
 		}
+
 	}
 
-	/**
-	 * Creates a new Builder instance for configuring and creating instances of
-	 * WebMvcSseServerTransportProvider.
-	 * @return A new Builder instance
-	 */
 	public static Builder builder() {
 		return new Builder();
 	}
 
 	/**
-	 * Builder for creating instances of WebMvcSseServerTransportProvider.
+	 * Builder for creating instances of {@link WebRxSseServerTransportProvider}.
 	 * <p>
 	 * This builder provides a fluent API for configuring and creating instances of
-	 * WebMvcSseServerTransportProvider with custom settings.
+	 * WebFluxSseServerTransportProvider with custom settings.
 	 */
 	public static class Builder {
 
 		private McpJsonMapper jsonMapper;
 
-		private String baseUrl = "";
+		private String baseUrl = DEFAULT_BASE_URL;
 
 		private String messageEndpoint;
 
 		private String sseEndpoint = DEFAULT_SSE_ENDPOINT;
 
-        private McpTransportContextExtractor<Context> contextExtractor = (
-                serverRequest) -> McpTransportContext.EMPTY;
-
 		private Duration keepAliveInterval;
 
+		private McpTransportContextExtractor<Context> contextExtractor = (
+				serverRequest) -> McpTransportContext.EMPTY;
+
 		/**
-		 * Sets the JSON object mapper to use for message serialization/deserialization.
-		 * @param jsonMapper The object mapper to use
-		 * @return This builder instance for method chaining
+		 * Sets the McpJsonMapper to use for JSON serialization/deserialization of MCP
+		 * messages.
+		 * @param jsonMapper The McpJsonMapper instance. Must not be null.
+		 * @return this builder instance
+		 * @throws IllegalArgumentException if jsonMapper is null
 		 */
 		public Builder jsonMapper(McpJsonMapper jsonMapper) {
-			Assert.notNull(jsonMapper, "McpJsonMapper must not be null");
+			Assert.notNull(jsonMapper, "JsonMapper must not be null");
 			this.jsonMapper = jsonMapper;
 			return this;
 		}
 
 		/**
-		 * Sets the base URL for the server transport.
-		 * @param baseUrl The base URL to use
-		 * @return This builder instance for method chaining
+		 * Sets the project basePath as endpoint prefix where clients should send their
+		 * JSON-RPC messages
+		 * @param baseUrl the message basePath . Must not be null.
+		 * @return this builder instance
+		 * @throws IllegalArgumentException if basePath is null
 		 */
-		public Builder baseUrl(String baseUrl) {
-			Assert.notNull(baseUrl, "Base URL must not be null");
+		public Builder basePath(String baseUrl) {
+			Assert.notNull(baseUrl, "basePath must not be null");
 			this.baseUrl = baseUrl;
 			return this;
 		}
 
 		/**
-		 * Sets the endpoint path where clients will send their messages.
-		 * @param messageEndpoint The message endpoint path
-		 * @return This builder instance for method chaining
+		 * Sets the endpoint URI where clients should send their JSON-RPC messages.
+		 * @param messageEndpoint The message endpoint URI. Must not be null.
+		 * @return this builder instance
+		 * @throws IllegalArgumentException if messageEndpoint is null
 		 */
 		public Builder messageEndpoint(String messageEndpoint) {
-			Assert.hasText(messageEndpoint, "Message endpoint must not be empty");
+			Assert.notNull(messageEndpoint, "Message endpoint must not be null");
 			this.messageEndpoint = messageEndpoint;
 			return this;
 		}
 
 		/**
-		 * Sets the endpoint path where clients will establish SSE connections.
-		 * <p>
-		 * If not specified, the default value of {@link #DEFAULT_SSE_ENDPOINT} will be
-		 * used.
-		 * @param sseEndpoint The SSE endpoint path
-		 * @return This builder instance for method chaining
+		 * Sets the SSE endpoint path.
+		 * @param sseEndpoint The SSE endpoint path. Must not be null.
+		 * @return this builder instance
+		 * @throws IllegalArgumentException if sseEndpoint is null
 		 */
 		public Builder sseEndpoint(String sseEndpoint) {
-			Assert.hasText(sseEndpoint, "SSE endpoint must not be empty");
+			Assert.notNull(sseEndpoint, "SSE endpoint must not be null");
 			this.sseEndpoint = sseEndpoint;
 			return this;
 		}
 
 		/**
-		 * Sets the interval for keep-alive pings.
-		 * <p>
-		 * If not specified, keep-alive pings will be disabled.
-		 * @param keepAliveInterval The interval duration for keep-alive pings
-		 * @return This builder instance for method chaining
+		 * Sets the interval for sending keep-alive pings to clients.
+		 * @param keepAliveInterval The keep-alive interval duration. If null, keep-alive
+		 * is disabled.
+		 * @return this builder instance
 		 */
 		public Builder keepAliveInterval(Duration keepAliveInterval) {
 			this.keepAliveInterval = keepAliveInterval;
@@ -608,22 +517,15 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 		}
 
 		/**
-		 * Builds a new instance of WebMvcSseServerTransportProvider with the configured
-		 * settings.
-		 * @return A new WebMvcSseServerTransportProvider instance
-		 * @throws IllegalStateException if jsonMapper or messageEndpoint is not set
+		 * Builds a new instance of {@link WebRxSseServerTransportProvider} with the
+		 * configured settings.
+		 * @return A new WebFluxSseServerTransportProvider instance
+		 * @throws IllegalStateException if required parameters are not set
 		 */
 		public WebRxSseServerTransportProvider build() {
-			if (messageEndpoint == null) {
-				throw new IllegalStateException("MessageEndpoint must be set");
-			}
-			return new WebRxSseServerTransportProvider(
-                    jsonMapper == null ? McpJsonMapper.getDefault() : jsonMapper,
-					baseUrl,
-					messageEndpoint,
-					sseEndpoint,
-					keepAliveInterval,
-					contextExtractor);
+			Assert.notNull(messageEndpoint, "Message endpoint must be set");
+			return new WebRxSseServerTransportProvider(jsonMapper == null ? McpJsonMapper.getDefault() : jsonMapper,
+					baseUrl, messageEndpoint, sseEndpoint, keepAliveInterval, contextExtractor);
 		}
 	}
 }
