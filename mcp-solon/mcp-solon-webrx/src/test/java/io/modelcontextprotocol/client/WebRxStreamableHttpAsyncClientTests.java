@@ -14,12 +14,12 @@ import java.time.Duration;
 @Timeout(15)
 public class WebRxStreamableHttpAsyncClientTests extends AbstractMcpAsyncClientTests {
 
-	static String host = "http://localhost:3001";
+    static String host = "http://localhost:3001";
 
-	// Uses the https://github.com/tzolov/mcp-everything-server-docker-image
-	@SuppressWarnings("resource")
+    // Uses the https://github.com/tzolov/mcp-everything-server-docker-image
+    @SuppressWarnings("resource")
     static GenericContainer<?> container = new GenericContainer<>("docker.io/tzolov/mcp-everything-server:v3")
-            .withCommand("node dist/index.js sse")
+            .withCommand("node dist/index.js streamableHttp")
             .withLogConsumer(outputFrame -> System.out.println(outputFrame.getUtf8String()))
             .withExposedPorts(3001)
             .waitingFor(Wait.forHttp("/").forStatusCode(404));
@@ -39,10 +39,6 @@ public class WebRxStreamableHttpAsyncClientTests extends AbstractMcpAsyncClientT
     @AfterAll
     static void stopContainer() {
         container.stop();
-    }
-
-    protected Duration getInitializationTimeout() {
-        return Duration.ofSeconds(1);
     }
 
 }
