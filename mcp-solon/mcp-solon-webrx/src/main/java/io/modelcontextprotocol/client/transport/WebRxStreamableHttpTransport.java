@@ -244,9 +244,18 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
                             }
                         }
                         else {
-                            return Flux.<McpSchema.JSONRPCMessage>error(response.createError()).doOnError(e -> {
-                                logger.info("Opening an SSE stream failed. This can be safely ignored.", e);
-                            });
+                            //todo:优化了 StreamableHttp 模式下 服务端正常返回时 客户端异常日志打印的情况
+                            String sessionRepresentation = sessionIdOrPlaceholder(transportSession);
+                            if (response.code() >= StatusCodes.CODE_OK && response.code() < StatusCodes.CODE_MULTIPLE_CHOICES) {
+                                String ct = response.contentType();
+                                logger.info("GET returned {} with content-type '{}', no SSE opened for session {}", response.code(), ct, sessionRepresentation);
+                                return Flux.empty();
+                            }
+                            return this.extractError(response, sessionRepresentation);
+
+//                            return Flux.<McpSchema.JSONRPCMessage>error(response.createError()).doOnError(e -> {
+//                                logger.info("Opening an SSE stream failed. This can be safely ignored.", e);
+//                            });
                         }
                     })
                     .flatMap(jsonrpcMessage -> this.handler.get().apply(Mono.just(jsonrpcMessage)))

@@ -183,31 +183,38 @@ public class WebRxSseClientTransport implements McpClientTransport {
 		// -> allow optimizing for eager connection start using a constructor flag
 		Flux<ServerSentEvent> events = eventStream();
 		this.inboundSubscription = events.concatMap(event -> Mono.just(event).<JSONRPCMessage>handle((e, s) -> {
-			if (ENDPOINT_EVENT_TYPE.equals(event.event())) {
-				String messageEndpointUri = event.data();
-				if (messageEndpointSink.tryEmitValue(messageEndpointUri).isSuccess()) {
-					s.complete();
-				}
-				else {
-					// TODO: clarify with the spec if multiple events can be
-					// received
-					s.error(new RuntimeException("Failed to handle SSE endpoint event"));
-				}
-			}
-			else if (MESSAGE_EVENT_TYPE.equals(event.event())) {
-				try {
-					JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(this.jsonMapper, event.data());
-					s.next(message);
-				}
-				catch (IOException ioException) {
-					s.error(ioException);
-				}
-			}
-			else {
-				logger.debug("Received unrecognized SSE event type: {}", event);
-				s.complete();
-			}
-		}).transform(handler)).subscribe();
+					if (ENDPOINT_EVENT_TYPE.equals(event.event())) {
+						String messageEndpointUri = event.data();
+						if (messageEndpointSink.tryEmitValue(messageEndpointUri).isSuccess()) {
+							s.complete();
+						} else {
+							// TODO: clarify with the spec if multiple events can be
+							// received
+							s.error(new RuntimeException("Failed to handle SSE endpoint event"));
+						}
+					} else if (MESSAGE_EVENT_TYPE.equals(event.event())) {
+						try {
+							JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(this.jsonMapper, event.data());
+							s.next(message);
+						} catch (IOException ioException) {
+							s.error(ioException);
+						}
+					} else {
+						logger.debug("Received unrecognized SSE event type: {}", event);
+						s.complete();
+					}
+				}).transform(handler)).doOnError(error -> {
+					//todo: MCP客户端与服务端异常链接状态 立即返回
+					if (!isClosing) {
+						messageEndpointSink.tryEmitError(error);
+					}
+				})
+				.doOnComplete(() -> {
+					//todo: MCP客户端与服务端异常链接状态 立即返回
+					if (!isClosing) {
+						messageEndpointSink.tryEmitError(new RuntimeException("SSE connection completed before endpoint event"));
+					}
+				}).subscribe();
 
 		// The connection is established once the server sends the endpoint event
 		return messageEndpointSink.asMono().then();
@@ -215,16 +222,17 @@ public class WebRxSseClientTransport implements McpClientTransport {
 
 	/**
 	 * Sends a JSON-RPC message to the server using the endpoint provided during
-	 * connection.
-	 *
-	 * <p>
-	 * Messages are sent via HTTP POST requests to the server-provided endpoint URI. The
-	 * message is serialized to JSON before transmission. If the transport is in the
-	 * process of closing, the message send operation is skipped gracefully.
-	 * @param message the JSON-RPC message to send
-	 * @return a Mono that completes when the message has been sent successfully
-	 * @throws RuntimeException if message serialization fails
-	 */
+     * connection.
+     *
+     * <p>
+     * Messages are sent via HTTP POST requests to the server-provided endpoint URI. The
+     * message is serialized to JSON before transmission. If the transport is in the
+     * process of closing, the message send operation is skipped gracefully.
+     *
+     * @param message the JSON-RPC message to send
+     * @return a Mono that completes when the message has been sent successfully
+     * @throws RuntimeException if message serialization fails
+     */
 	@Override
 	public Mono<Void> sendMessage(JSONRPCMessage message) {
 		// The messageEndpoint is the endpoint URI to send the messages
@@ -258,10 +266,10 @@ public class WebRxSseClientTransport implements McpClientTransport {
 	}
 
 	/**
-	 * Initializes and starts the inbound SSE event processing. Establishes the SSE
-	 * connection and sets up event handling for both message and endpoint events.
-	 * Includes automatic retry logic for handling transient connection failures.
-	 */
+     * Initializes and starts the inbound SSE event processing. Establishes the SSE
+     * connection and sets up event handling for both message and endpoint events.
+     * Includes automatic retry logic for handling transient connection failures.
+     */
 	// visible for tests
 	protected Flux<ServerSentEvent> eventStream() {// @formatter:off
 		return Flux.from(this.webClientBuilder.build(this.sseEndpoint)
