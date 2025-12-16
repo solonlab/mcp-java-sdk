@@ -125,7 +125,7 @@ class WebRxSseClientTransportTests {
 	void constructorValidation() {
 		assertThatThrownBy(() -> new WebRxSseClientTransport(null, JSON_MAPPER))
 			.isInstanceOf(IllegalArgumentException.class)
-			.hasMessageContaining("WebClient.Builder must not be null");
+			.hasMessageContaining("webClientBuilder must not be null");
 
 		assertThatThrownBy(() -> new WebRxSseClientTransport(webClientBuilder, null))
 			.isInstanceOf(IllegalArgumentException.class)
