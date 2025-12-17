@@ -1830,6 +1830,14 @@ public final class McpSchema {
 			this.role = role;
 			this.content = content;
 		}
+
+		public Role role() {
+			return role;
+		}
+
+		public Content content() {
+			return content;
+		}
 	}
 
 	/**

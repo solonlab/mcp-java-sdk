@@ -4,6 +4,16 @@
 
 package io.modelcontextprotocol.client;
 
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
+import io.modelcontextprotocol.spec.McpClientTransport;
+import io.modelcontextprotocol.spec.McpSchema;
+import io.modelcontextprotocol.spec.McpSchema.*;
+import io.modelcontextprotocol.spec.McpTransport;
+import io.modelcontextprotocol.util.Assert;
+
+import reactor.core.publisher.Mono;
+
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,21 +22,6 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-
-import io.modelcontextprotocol.json.schema.JsonSchemaValidator;
-import io.modelcontextprotocol.common.McpTransportContext;
-import io.modelcontextprotocol.spec.McpClientTransport;
-import io.modelcontextprotocol.spec.McpSchema;
-import io.modelcontextprotocol.spec.McpSchema.ClientCapabilities;
-import io.modelcontextprotocol.spec.McpSchema.CreateMessageRequest;
-import io.modelcontextprotocol.spec.McpSchema.CreateMessageResult;
-import io.modelcontextprotocol.spec.McpSchema.ElicitRequest;
-import io.modelcontextprotocol.spec.McpSchema.ElicitResult;
-import io.modelcontextprotocol.spec.McpSchema.Implementation;
-import io.modelcontextprotocol.spec.McpSchema.Root;
-import io.modelcontextprotocol.spec.McpTransport;
-import io.modelcontextprotocol.util.Assert;
-import reactor.core.publisher.Mono;
 
 /**
  * Factory class for creating Model Context Protocol (MCP) clients. MCP is a protocol that
