@@ -29,7 +29,9 @@ import reactor.core.publisher.Mono;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -232,13 +234,13 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 				return RxEntity.ok()
 						.contentType(MimeType.TEXT_EVENT_STREAM_VALUE)
 						.body(session.replay(lastId)
-								.contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
+										.contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
 			}
 
 			return RxEntity.ok()
 					.contentType(MimeType.TEXT_EVENT_STREAM_VALUE)
 					.body(Flux.<SseEvent>create(sink -> {
-						WebFluxStreamableMcpSessionTransport sessionTransport = new WebFluxStreamableMcpSessionTransport(
+						WebRxStreamableMcpSessionTransport sessionTransport = new WebRxStreamableMcpSessionTransport(
 								sink);
 						McpStreamableServerSession.McpStreamableServerSessionStream listeningStream = session
 								.listeningStream(sessionTransport);
@@ -333,16 +335,16 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 							return RxEntity.ok()
 									.contentType(MimeType.TEXT_EVENT_STREAM_VALUE)
 									.body(Flux.<SseEvent>create(sink -> {
-										WebFluxStreamableMcpSessionTransport st = new WebFluxStreamableMcpSessionTransport(sink);
-										Mono<Void> stream = session.responseStream(jsonrpcRequest, st);
-										Disposable streamSubscription = stream.onErrorComplete(err -> {
-											sink.error(err);
-											return true;
-										}).contextWrite(sink.contextView()).subscribe();
-										sink.onCancel(streamSubscription);
-										// TODO Clarify why the outer context is not present in the
-										// Flux.create sink?
-									}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
+												WebRxStreamableMcpSessionTransport st = new WebRxStreamableMcpSessionTransport(sink);
+												Mono<Void> stream = session.responseStream(jsonrpcRequest, st);
+												Disposable streamSubscription = stream.onErrorComplete(err -> {
+													sink.error(err);
+													return true;
+												}).contextWrite(sink.contextView()).subscribe();
+												sink.onCancel(streamSubscription);
+												// TODO Clarify why the outer context is not present in the
+												// Flux.create sink?
+											}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
 						}
 						else {
 							return RxEntity.badRequest().body(new McpError("Unknown message type"));
@@ -391,11 +393,11 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 		}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext));
 	}
 
-	private class WebFluxStreamableMcpSessionTransport implements McpStreamableServerTransport {
+	private class WebRxStreamableMcpSessionTransport implements McpStreamableServerTransport {
 
 		private final FluxSink<SseEvent> sink;
 
-		public WebFluxStreamableMcpSessionTransport(FluxSink<SseEvent> sink) {
+		public WebRxStreamableMcpSessionTransport(FluxSink<SseEvent> sink) {
 			this.sink = sink;
 		}
 
@@ -459,8 +461,11 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 
 		private String mcpEndpoint = "/mcp";
 
-		private McpTransportContextExtractor<Context> contextExtractor = (
-				serverRequest) -> McpTransportContext.EMPTY;
+		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest) -> {
+			Map<String,Object> context = new HashMap<>();
+			context.put(Context.class.getName(), serverRequest);
+			return McpTransportContext.create(context);
+		};
 
 		private boolean disallowDelete;
 

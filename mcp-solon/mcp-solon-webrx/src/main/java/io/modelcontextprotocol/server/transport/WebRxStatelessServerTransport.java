@@ -19,6 +19,8 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Implementation of a WebFlux based {@link McpStatelessServerTransport}.
@@ -40,7 +42,7 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 	private volatile boolean isClosing = false;
 
 	private WebRxStatelessServerTransport(McpJsonMapper jsonMapper, String mcpEndpoint,
-										  McpTransportContextExtractor<Context> contextExtractor) {
+                                          McpTransportContextExtractor<Context> contextExtractor) {
 		Assert.notNull(jsonMapper, "jsonMapper must not be null");
 		Assert.notNull(mcpEndpoint, "mcpEndpoint must not be null");
 		Assert.notNull(contextExtractor, "contextExtractor must not be null");
@@ -157,8 +159,11 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 
 		private String mcpEndpoint = "/mcp";
 
-		private McpTransportContextExtractor<Context> contextExtractor = (
-				serverRequest) -> McpTransportContext.EMPTY;
+		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest) -> {
+			Map<String,Object> context = new HashMap<>();
+			context.put(Context.class.getName(), serverRequest);
+			return McpTransportContext.create(context);
+		};
 
 		private Builder() {
 			// used by a static method

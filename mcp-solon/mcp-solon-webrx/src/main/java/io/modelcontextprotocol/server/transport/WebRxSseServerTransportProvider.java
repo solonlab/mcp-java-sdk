@@ -28,7 +28,9 @@ import reactor.core.publisher.Mono;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -110,8 +112,9 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 	 * Map of active client sessions, keyed by session ID.
 	 */
 	private final ConcurrentHashMap<String, McpServerSession> sessions = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<String, Context> sessionRequests = new ConcurrentHashMap<>();
 
-	private McpTransportContextExtractor<Context> contextExtractor;
+    private McpTransportContextExtractor<Context> contextExtractor;
 
 	/**
 	 * Flag indicating if the transport is shutting down.
@@ -167,7 +170,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 
 			this.keepAliveScheduler.start();
 		}
-	}
+    }
 
 	@Override
 	public void toHttpHandler(SolonApp app) {
@@ -268,13 +271,14 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 		return RxEntity.ok()
 				.contentType(MimeType.TEXT_EVENT_STREAM_VALUE)
 				.body(Flux.<SseEvent>create(sink -> {
-					WebFluxMcpSessionTransport sessionTransport = new WebFluxMcpSessionTransport(sink);
+					WebRxSseMcpSessionTransport sessionTransport = new WebRxSseMcpSessionTransport(sink);
 
 					McpServerSession session = sessionFactory.create(sessionTransport);
 					String sessionId = session.getId();
 
 					logger.debug("Created new SSE connection for session: {}", sessionId);
 					sessions.put(sessionId, session);
+					sessionRequests.put(sessionId, request);
 
 					// Send initial endpoint event
 					logger.debug("Sending initial endpoint event to session: {}", sessionId);
@@ -282,6 +286,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 					sink.onCancel(() -> {
 						logger.debug("Session {} cancelled", sessionId);
 						sessions.remove(sessionId);
+						sessionRequests.remove(sessionId);
 					});
 				}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
 	}
@@ -340,14 +345,16 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 			return RxEntity.badRequest().body(new McpError("Session ID missing in message endpoint"));
 		}
 
-		McpServerSession session = sessions.get(request.param("sessionId"));
+		String sessionId = request.param("sessionId");
+		McpServerSession session = sessions.get(sessionId);
+		Context sessionRequest = sessionRequests.get(sessionId);
 
 		if (session == null) {
 			return RxEntity.status(StatusCodes.CODE_NOT_FOUND)
-					.body(new McpError("Session not found: " + request.param("sessionId")));
+					.body(new McpError("Session not found: " + sessionId));
 		}
 
-		McpTransportContext transportContext = this.contextExtractor.extract(request);
+		McpTransportContext transportContext = this.contextExtractor.extract(sessionRequest);
 
 
 		return Mono.just(request.body()).flatMap(body -> {
@@ -369,11 +376,11 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 		}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext));
 	}
 
-	private class WebFluxMcpSessionTransport implements McpServerTransport {
+	private class WebRxSseMcpSessionTransport implements McpServerTransport {
 
 		private final FluxSink<SseEvent> sink;
 
-		public WebFluxMcpSessionTransport(FluxSink<SseEvent> sink) {
+		public WebRxSseMcpSessionTransport(FluxSink<SseEvent> sink) {
 			this.sink = sink;
 		}
 
@@ -437,8 +444,11 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 
 		private Duration keepAliveInterval;
 
-		private McpTransportContextExtractor<Context> contextExtractor = (
-				serverRequest) -> McpTransportContext.EMPTY;
+		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest) -> {
+			Map<String,Object> context = new HashMap<>();
+			context.put(Context.class.getName(), serverRequest);
+			return McpTransportContext.create(context);
+		};
 
 		/**
 		 * Sets the McpJsonMapper to use for JSON serialization/deserialization of MCP
