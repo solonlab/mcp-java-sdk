@@ -48,7 +48,7 @@ import java.util.function.Function;
  * This implementation does not handle backwards compatibility with the <a href=
  * "https://modelcontextprotocol.io/specification/2024-11-05/basic/transports#http-with-sse">"HTTP
  * with SSE" transport</a>. In order to communicate over the phased-out
- * <code>2024-11-05</code> protocol, use {@link HttpClientSseClientTransport} or
+ * <code>2024-11-05</code> protocol, use {@link WebRxSseClientTransport} or
  * {@link WebRxSseClientTransport}.
  * </p>
  *
@@ -103,7 +103,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
         this.resumableStreams = resumableStreams;
         this.openConnectionOnStartup = openConnectionOnStartup;
         this.activeSession.set(createTransportSession());
-        this.supportedProtocolVersions = List.copyOf(supportedProtocolVersions);
+        this.supportedProtocolVersions = new ArrayList<>(supportedProtocolVersions);
         this.latestSupportedProtocolVersion = this.supportedProtocolVersions.stream()
                 .sorted(Comparator.reverseOrder())
                 .findFirst()
@@ -160,7 +160,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 
     private McpTransportSession<Disposable> createClosedSession(McpTransportSession<Disposable> existingSession) {
         var existingSessionId = Optional.ofNullable(existingSession)
-                .filter(session -> !(session instanceof ClosedMcpTransportSession<Disposable>))
+                .filter(session -> !(session instanceof ClosedMcpTransportSession))
                 .flatMap(McpTransportSession::sessionId)
                 .orElse(null);
         return new ClosedMcpTransportSession<>(existingSessionId);
@@ -496,7 +496,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
                 // We don't support batching ATM and probably won't since the next version
                 // considers removing it.
                 McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(this.jsonMapper, event.data());
-                return Tuples.of(Optional.ofNullable(event.id()), List.of(message));
+                return Tuples.of(Optional.ofNullable(event.id()), Arrays.asList(message));
             } catch (IOException ioException) {
                 throw new McpTransportException("Error parsing JSON-RPC message: " + event.data(), ioException);
             }
@@ -521,7 +521,7 @@ public class WebRxStreamableHttpTransport implements McpClientTransport {
 
         private boolean openConnectionOnStartup = false;
 
-        private List<String> supportedProtocolVersions = List.of(ProtocolVersions.MCP_2024_11_05,
+        private List<String> supportedProtocolVersions = Arrays.asList(ProtocolVersions.MCP_2024_11_05,
                 ProtocolVersions.MCP_2025_03_26, ProtocolVersions.MCP_2025_06_18);
 
         private Builder(HttpUtilsBuilder webClientBuilder) {

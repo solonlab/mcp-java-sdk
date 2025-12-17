@@ -14,13 +14,11 @@ import org.noear.solon.core.handle.Entity;
 import org.noear.solon.core.handle.StatusCodes;
 import org.noear.solon.core.util.MimeType;
 import org.noear.solon.rx.handle.RxEntity;
-import org.noear.solon.web.sse.SseEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
-import java.util.List;
 
 /**
  * Implementation of a WebFlux based {@link McpStatelessServerTransport}.
@@ -42,7 +40,7 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 	private volatile boolean isClosing = false;
 
 	private WebRxStatelessServerTransport(McpJsonMapper jsonMapper, String mcpEndpoint,
-                                          McpTransportContextExtractor<Context> contextExtractor) {
+										  McpTransportContextExtractor<Context> contextExtractor) {
 		Assert.notNull(jsonMapper, "jsonMapper must not be null");
 		Assert.notNull(mcpEndpoint, "mcpEndpoint must not be null");
 		Assert.notNull(contextExtractor, "contextExtractor must not be null");
@@ -108,7 +106,8 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 			try {
 				McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(jsonMapper, body);
 
-				if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest) {
+				if (message instanceof McpSchema.JSONRPCRequest) {
+					McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest)message;
 					return this.mcpHandler.handleRequest(transportContext, jsonrpcRequest).flatMap(jsonrpcResponse -> {
 						try {
 							String json = jsonMapper.writeValueAsString(jsonrpcResponse);
@@ -121,7 +120,8 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 						}
 					});
 				}
-				else if (message instanceof McpSchema.JSONRPCNotification jsonrpcNotification) {
+				else if (message instanceof McpSchema.JSONRPCNotification) {
+					McpSchema.JSONRPCNotification jsonrpcNotification = (McpSchema.JSONRPCNotification)message;
 					return this.mcpHandler.handleNotification(transportContext, jsonrpcNotification)
 							.then(RxEntity.accepted().build());
 				}

@@ -17,7 +17,6 @@ import org.noear.solon.core.handle.Entity;
 import org.noear.solon.core.handle.StatusCodes;
 import org.noear.solon.core.util.MimeType;
 import org.noear.solon.rx.handle.RxEntity;
-import org.noear.solon.web.sse.SseEmitter;
 import org.noear.solon.web.sse.SseEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,7 +31,6 @@ import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Server-side implementation of the Model Context Protocol (MCP) streamable transport
@@ -146,7 +144,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 
 	@Override
 	public List<String> protocolVersions() {
-		return List.of(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26,
+		return Arrays.asList(ProtocolVersions.MCP_2024_11_05, ProtocolVersions.MCP_2025_03_26,
 				ProtocolVersions.MCP_2025_06_18);
 	}
 
@@ -234,7 +232,7 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 				return RxEntity.ok()
 						.contentType(MimeType.TEXT_EVENT_STREAM_VALUE)
 						.body(session.replay(lastId)
-										.contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
+								.contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
 			}
 
 			return RxEntity.ok()
@@ -284,30 +282,30 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 		return Mono.just(request.body()).<Entity>flatMap(body -> {
 					try {
 						McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(jsonMapper, body);
-						if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest
-								&& jsonrpcRequest.method().equals(McpSchema.METHOD_INITIALIZE)) {
-							var typeReference = new TypeRef<McpSchema.InitializeRequest>() {
-							};
-							McpSchema.InitializeRequest initializeRequest = jsonMapper.convertValue(jsonrpcRequest.params(),
-									typeReference);
-							McpStreamableServerSession.McpStreamableServerSessionInit init = this.sessionFactory
-									.startSession(initializeRequest);
-							sessions.put(init.session().getId(), init.session());
-							return init.initResult().map(initializeResult -> {
-										McpSchema.JSONRPCResponse jsonrpcResponse = new McpSchema.JSONRPCResponse(
-												McpSchema.JSONRPC_VERSION, jsonrpcRequest.id(), initializeResult, null);
-										try {
-											return this.jsonMapper.writeValueAsString(jsonrpcResponse);
-										}
-										catch (IOException e) {
-											logger.warn("Failed to serialize initResponse", e);
-											throw Exceptions.propagate(e);
-										}
-									})
-									.flatMap(initResult -> RxEntity.ok()
-											.contentType(MimeType.APPLICATION_JSON_VALUE)
-											.headerSet(HttpHeaders.MCP_SESSION_ID, init.session().getId())
-											.body(initResult));
+						if (message instanceof McpSchema.JSONRPCRequest) {
+							McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest) message;
+							if (jsonrpcRequest.method().equals(McpSchema.METHOD_INITIALIZE)) {
+								var typeReference = new TypeRef<McpSchema.InitializeRequest>() {};
+								McpSchema.InitializeRequest initializeRequest = jsonMapper.convertValue(jsonrpcRequest.params(),
+										typeReference);
+								McpStreamableServerSession.McpStreamableServerSessionInit init = this.sessionFactory
+										.startSession(initializeRequest);
+								sessions.put(init.session().getId(), init.session());
+								return init.initResult().map(initializeResult -> {
+											McpSchema.JSONRPCResponse jsonrpcResponse = new McpSchema.JSONRPCResponse(
+													McpSchema.JSONRPC_VERSION, jsonrpcRequest.id(), initializeResult, null);
+											try {
+												return this.jsonMapper.writeValueAsString(jsonrpcResponse);
+											} catch (IOException e) {
+												logger.warn("Failed to serialize initResponse", e);
+												throw Exceptions.propagate(e);
+											}
+										})
+										.flatMap(initResult -> RxEntity.ok()
+												.contentType(MimeType.APPLICATION_JSON_VALUE)
+												.headerSet(HttpHeaders.MCP_SESSION_ID, init.session().getId())
+												.body(initResult));
+							}
 						}
 
 						if (request.headerMap().containsKey(HttpHeaders.MCP_SESSION_ID) == false) {
@@ -322,26 +320,29 @@ public class WebRxStreamableServerTransportProvider implements McpStreamableServ
 									.body(new McpError("Session not found: " + sessionId));
 						}
 
-						if (message instanceof McpSchema.JSONRPCResponse jsonrpcResponse) {
+						if (message instanceof McpSchema.JSONRPCResponse) {
+							McpSchema.JSONRPCResponse jsonrpcResponse = (McpSchema.JSONRPCResponse)message;
 							return session.accept(jsonrpcResponse).then(RxEntity.accepted().build());
 						}
-						else if (message instanceof McpSchema.JSONRPCNotification jsonrpcNotification) {
+						else if (message instanceof McpSchema.JSONRPCNotification) {
+							McpSchema.JSONRPCNotification jsonrpcNotification = (McpSchema.JSONRPCNotification)message;
 							return session.accept(jsonrpcNotification).then(RxEntity.accepted().build());
 						}
-						else if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest) {
+						else if (message instanceof McpSchema.JSONRPCRequest) {
+							McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest)message;
 							return RxEntity.ok()
 									.contentType(MimeType.TEXT_EVENT_STREAM_VALUE)
 									.body(Flux.<SseEvent>create(sink -> {
-												WebFluxStreamableMcpSessionTransport st = new WebFluxStreamableMcpSessionTransport(sink);
-												Mono<Void> stream = session.responseStream(jsonrpcRequest, st);
-												Disposable streamSubscription = stream.onErrorComplete(err -> {
-													sink.error(err);
-													return true;
-												}).contextWrite(sink.contextView()).subscribe();
-												sink.onCancel(streamSubscription);
-												// TODO Clarify why the outer context is not present in the
-												// Flux.create sink?
-											}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
+										WebFluxStreamableMcpSessionTransport st = new WebFluxStreamableMcpSessionTransport(sink);
+										Mono<Void> stream = session.responseStream(jsonrpcRequest, st);
+										Disposable streamSubscription = stream.onErrorComplete(err -> {
+											sink.error(err);
+											return true;
+										}).contextWrite(sink.contextView()).subscribe();
+										sink.onCancel(streamSubscription);
+										// TODO Clarify why the outer context is not present in the
+										// Flux.create sink?
+									}).contextWrite(ctx -> ctx.put(McpTransportContext.KEY, transportContext)));
 						}
 						else {
 							return RxEntity.badRequest().body(new McpError("Unknown message type"));

@@ -27,6 +27,7 @@ import reactor.core.publisher.Mono;
 
 import java.io.IOException;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -110,7 +111,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 	 */
 	private final ConcurrentHashMap<String, McpServerSession> sessions = new ConcurrentHashMap<>();
 
-    private McpTransportContextExtractor<Context> contextExtractor;
+	private McpTransportContextExtractor<Context> contextExtractor;
 
 	/**
 	 * Flag indicating if the transport is shutting down.
@@ -166,7 +167,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 
 			this.keepAliveScheduler.start();
 		}
-    }
+	}
 
 	@Override
 	public void toHttpHandler(SolonApp app) {
@@ -183,7 +184,7 @@ public class WebRxSseServerTransportProvider implements McpServerTransportProvid
 
 	@Override
 	public List<String> protocolVersions() {
-		return List.of(ProtocolVersions.MCP_2024_11_05);
+		return Arrays.asList(ProtocolVersions.MCP_2024_11_05);
 	}
 
 	@Override
