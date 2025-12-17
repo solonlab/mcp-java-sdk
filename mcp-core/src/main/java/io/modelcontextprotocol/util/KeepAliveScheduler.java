@@ -4,21 +4,19 @@
 
 package io.modelcontextprotocol.util;
 
-import java.time.Duration;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Supplier;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import io.modelcontextprotocol.json.TypeRef;
-
 import io.modelcontextprotocol.spec.McpSchema;
 import io.modelcontextprotocol.spec.McpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Scheduler;
 import reactor.core.scheduler.Schedulers;
+
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 /**
  * A utility class for scheduling regular keep-alive calls to maintain connections. It
@@ -33,7 +31,7 @@ public class KeepAliveScheduler {
 
 	private static final Logger logger = LoggerFactory.getLogger(KeepAliveScheduler.class);
 
-	private static final TypeRef<Object> OBJECT_TYPE_REF = new TypeRef<>() {
+	private static final TypeRef<Object> OBJECT_TYPE_REF = new TypeRef<Object>() {
 	};
 
 	/** Initial delay before the first keepAlive call */
@@ -66,7 +64,7 @@ public class KeepAliveScheduler {
 	 * @param mcpSessions Supplier for McpSession instances
 	 */
 	KeepAliveScheduler(Scheduler scheduler, Duration initialDelay, Duration interval,
-			Supplier<Flux<McpSession>> mcpSessions) {
+					   Supplier<Flux<McpSession>> mcpSessions) {
 		this.scheduler = scheduler;
 		this.initialDelay = initialDelay;
 		this.interval = interval;
@@ -89,22 +87,22 @@ public class KeepAliveScheduler {
 		if (this.isRunning.compareAndSet(false, true)) {
 
 			this.currentSubscription = Flux.interval(this.initialDelay, this.interval, this.scheduler)
-				.doOnNext(tick -> {
-					this.mcpSessions.get()
-						.flatMap(session -> session.sendRequest(McpSchema.METHOD_PING, null, OBJECT_TYPE_REF)
-							.doOnError(e -> logger.warn("Failed to send keep-alive ping to session {}: {}", session,
-									e.getMessage()))
-							.onErrorComplete())
-						.subscribe();
-				})
-				.doOnCancel(() -> this.isRunning.set(false))
-				.doOnComplete(() -> this.isRunning.set(false))
-				.onErrorComplete(error -> {
-					logger.error("KeepAlive scheduler error", error);
-					this.isRunning.set(false);
-					return true;
-				})
-				.subscribe();
+					.doOnNext(tick -> {
+						this.mcpSessions.get()
+								.flatMap(session -> session.sendRequest(McpSchema.METHOD_PING, null, OBJECT_TYPE_REF)
+										.doOnError(e -> logger.warn("Failed to send keep-alive ping to session {}: {}", session,
+												e.getMessage()))
+										.onErrorComplete())
+								.subscribe();
+					})
+					.doOnCancel(() -> this.isRunning.set(false))
+					.doOnComplete(() -> this.isRunning.set(false))
+					.onErrorComplete(error -> {
+						logger.error("KeepAlive scheduler error", error);
+						this.isRunning.set(false);
+						return true;
+					})
+					.subscribe();
 
 			return this.currentSubscription;
 		}

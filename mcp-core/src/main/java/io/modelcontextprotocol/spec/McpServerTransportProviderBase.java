@@ -4,10 +4,11 @@
 
 package io.modelcontextprotocol.spec;
 
+import reactor.core.publisher.Mono;
+
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-
-import reactor.core.publisher.Mono;
 
 /**
  * The core building block providing the server-side MCP transport. Implement this
@@ -65,7 +66,7 @@ public interface McpServerTransportProviderBase {
 	 * @return the protocol version as a string
 	 */
 	default List<String> protocolVersions() {
-		return List.of(ProtocolVersions.MCP_2024_11_05);
+		return Arrays.asList(ProtocolVersions.MCP_2024_11_05);
 	}
 
 }
