@@ -13,7 +13,9 @@ import reactor.core.publisher.Mono;
 import reactor.core.publisher.MonoSink;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
@@ -107,7 +109,7 @@ public class McpClientSession implements McpSession {
 	 */
 	@Deprecated
 	public McpClientSession(Duration requestTimeout, McpClientTransport transport,
-			Map<String, RequestHandler<?>> requestHandlers, Map<String, NotificationHandler> notificationHandlers) {
+							Map<String, RequestHandler<?>> requestHandlers, Map<String, NotificationHandler> notificationHandlers) {
 		this(requestTimeout, transport, requestHandlers, notificationHandlers, Function.identity());
 	}
 
@@ -121,8 +123,8 @@ public class McpClientSession implements McpSession {
 	 * subscribing
 	 */
 	public McpClientSession(Duration requestTimeout, McpClientTransport transport,
-			Map<String, RequestHandler<?>> requestHandlers, Map<String, NotificationHandler> notificationHandlers,
-			Function<? super Mono<Void>, ? extends Publisher<Void>> connectHook) {
+							Map<String, RequestHandler<?>> requestHandlers, Map<String, NotificationHandler> notificationHandlers,
+							Function<? super Mono<Void>, ? extends Publisher<Void>> connectHook) {
 
 		Assert.notNull(requestTimeout, "The requestTimeout can not be null");
 		Assert.notNull(transport, "The transport can not be null");
@@ -146,7 +148,9 @@ public class McpClientSession implements McpSession {
 	}
 
 	private void handle(McpSchema.JSONRPCMessage message) {
-		if (message instanceof McpSchema.JSONRPCResponse response) {
+		if (message instanceof McpSchema.JSONRPCResponse) {
+			McpSchema.JSONRPCResponse response = (McpSchema.JSONRPCResponse) message;
+
 			logger.debug("Received response: {}", response);
 			if (response.id() != null) {
 				var sink = pendingResponses.remove(response.id());
@@ -163,15 +167,24 @@ public class McpClientSession implements McpSession {
 						+ "leaks as pending requests will never be completed.");
 			}
 		}
-		else if (message instanceof McpSchema.JSONRPCRequest request) {
+		else if (message instanceof McpSchema.JSONRPCRequest) {
+			McpSchema.JSONRPCRequest request = (McpSchema.JSONRPCRequest) message;
+
 			logger.debug("Received request: {}", request);
 			handleIncomingRequest(request).onErrorResume(error -> {
 
-				McpSchema.JSONRPCResponse.JSONRPCError jsonRpcError = (error instanceof McpError mcpError
-						&& mcpError.getJsonRpcError() != null) ? mcpError.getJsonRpcError()
-								// TODO: add error message through the data field
-								: new McpSchema.JSONRPCResponse.JSONRPCError(McpSchema.ErrorCodes.INTERNAL_ERROR,
-										error.getMessage(), McpError.aggregateExceptionMessages(error));
+				McpSchema.JSONRPCResponse.JSONRPCError jsonRpcError = Optional.of(error).map(t->{
+					if(t instanceof McpError){
+						McpError mcpError = (McpError) t;
+						if(mcpError.getJsonRpcError() != null){
+							return mcpError.getJsonRpcError();
+						}
+					}
+
+					// TODO: add error message through the data field
+					return new McpSchema.JSONRPCResponse.JSONRPCError(McpSchema.ErrorCodes.INTERNAL_ERROR,
+							t.getMessage(), McpError.aggregateExceptionMessages(t));
+				}).get();
 
 				var errorResponse = new McpSchema.JSONRPCResponse(McpSchema.JSONRPC_VERSION, request.id(), null,
 						jsonRpcError);
@@ -181,7 +194,9 @@ public class McpClientSession implements McpSession {
 				return true;
 			}).subscribe();
 		}
-		else if (message instanceof McpSchema.JSONRPCNotification notification) {
+		else if (message instanceof McpSchema.JSONRPCNotification) {
+			McpSchema.JSONRPCNotification notification = (McpSchema.JSONRPCNotification) message;
+
 			logger.debug("Received notification: {}", notification);
 			handleIncomingNotification(notification).onErrorComplete(t -> {
 				logger.error("Error handling notification: {}", t.getMessage());
@@ -209,18 +224,39 @@ public class McpClientSession implements McpSession {
 			}
 
 			return handler.handle(request.params())
-				.map(result -> new McpSchema.JSONRPCResponse(McpSchema.JSONRPC_VERSION, request.id(), result, null));
+					.map(result -> new McpSchema.JSONRPCResponse(McpSchema.JSONRPC_VERSION, request.id(), result, null));
 		});
 	}
 
-	record MethodNotFoundError(String method, String message, Object data) {
+	public static class MethodNotFoundError {
+		private String method;
+		private String message;
+		private Object data;
+
+		public MethodNotFoundError(String method, String message, Object data){
+			this.method = method;
+			this.message = message;
+			this.data = data;
+		}
+
+		public String method() {
+			return method;
+		}
+
+		public String message() {
+			return message;
+		}
+
+		public Object data() {
+			return data;
+		}
 	}
 
 	private MethodNotFoundError getMethodNotFoundError(String method) {
 		switch (method) {
 			case McpSchema.METHOD_ROOTS_LIST:
 				return new MethodNotFoundError(method, "Roots not supported",
-						Map.of("reason", "Client does not have roots capability"));
+						Collections.singletonMap("reason", "Client does not have roots capability"));
 			default:
 				return new MethodNotFoundError(method, "Method not found: " + method, null);
 		}
