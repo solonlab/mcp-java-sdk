@@ -76,12 +76,12 @@ public class McpServerFeatures {
 							? new McpSchema.ServerCapabilities.ResourceCapabilities(false, false) : null,
 					!Utils.isEmpty(tools) ? new McpSchema.ServerCapabilities.ToolCapabilities(false) : null);
 
-			this.tools = (tools != null) ? tools : List.of();
-			this.resources = (resources != null) ? resources : Map.of();
-			this.resourceTemplates = (resourceTemplates != null) ? resourceTemplates : Map.of();
-			this.prompts = (prompts != null) ? prompts : Map.of();
-			this.completions = (completions != null) ? completions : Map.of();
-			this.rootsChangeConsumers = (rootsChangeConsumers != null) ? rootsChangeConsumers : List.of();
+			this.tools = (tools != null) ? tools : new ArrayList<>();
+			this.resources = (resources != null) ? resources : new HashMap<>();
+			this.resourceTemplates = (resourceTemplates != null) ? resourceTemplates : new HashMap<>();
+			this.prompts = (prompts != null) ? prompts : new HashMap<>();
+			this.completions = (completions != null) ? completions : new HashMap<>();
+			this.rootsChangeConsumers = (rootsChangeConsumers != null) ? rootsChangeConsumers : new ArrayList<>();
 			this.instructions = instructions;
 		}
 
@@ -222,7 +222,7 @@ public class McpServerFeatures {
 
 			this.tools = (tools != null) ? tools : new ArrayList<>();
 			this.resources = (resources != null) ? resources : new HashMap<>();
-			this.resourceTemplates = (resourceTemplates != null) ? resourceTemplates : Map.of();
+			this.resourceTemplates = (resourceTemplates != null) ? resourceTemplates : new HashMap<>();
 			this.prompts = (prompts != null) ? prompts : new HashMap<>();
 			this.completions = (completions != null) ? completions : new HashMap<>();
 			this.rootsChangeConsumers = (rootsChangeConsumers != null) ? rootsChangeConsumers : new ArrayList<>();
