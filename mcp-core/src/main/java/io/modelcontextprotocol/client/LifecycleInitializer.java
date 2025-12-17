@@ -4,13 +4,6 @@
 
 package io.modelcontextprotocol.client;
 
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Function;
-
 import io.modelcontextprotocol.spec.McpClientSession;
 import io.modelcontextprotocol.spec.McpError;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -21,6 +14,13 @@ import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import reactor.util.context.ContextView;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 
 /**
  * <b>Handles the protocol initialization phase between client and server</b>
@@ -105,9 +105,9 @@ class LifecycleInitializer {
 	private final Function<Initialization, Mono<Void>> postInitializationHook;
 
 	public LifecycleInitializer(McpSchema.ClientCapabilities clientCapabilities, McpSchema.Implementation clientInfo,
-			List<String> protocolVersions, Duration initializationTimeout,
-			Function<ContextView, McpClientSession> sessionSupplier,
-			Function<Initialization, Mono<Void>> postInitializationHook) {
+								List<String> protocolVersions, Duration initializationTimeout,
+								Function<ContextView, McpClientSession> sessionSupplier,
+								Function<Initialization, Mono<Void>> postInitializationHook) {
 
 		Assert.notNull(sessionSupplier, "Session supplier must not be null");
 		Assert.notNull(clientCapabilities, "Client capabilities must not be null");
@@ -273,7 +273,15 @@ class LifecycleInitializer {
 	public <T> Mono<T> withInitialization(String actionName, Function<Initialization, Mono<T>> operation) {
 		return Mono.deferContextual(ctx -> {
 			DefaultInitialization newInit = new DefaultInitialization();
-			DefaultInitialization previous = this.initializationRef.compareAndExchange(null, newInit);
+			DefaultInitialization previous = initializationRef.get();
+
+			if (previous == null) {
+				if (initializationRef.compareAndSet(null, newInit)) {
+					previous = null;
+				} else {
+					previous = initializationRef.get();
+				}
+			}
 
 			boolean needsToInitialize = previous == null;
 			logger.debug(needsToInitialize ? "Initialization process started" : "Joining previous initialization");
@@ -282,19 +290,19 @@ class LifecycleInitializer {
 					? this.doInitialize(newInit, this.postInitializationHook, ctx) : previous.await();
 
 			return initializationJob.map(initializeResult -> this.initializationRef.get())
-				.timeout(this.initializationTimeout)
-				.onErrorResume(ex -> {
-					this.initializationRef.compareAndSet(newInit, null);
-					return Mono.error(new RuntimeException("Client failed to initialize " + actionName, ex));
-				})
-				.flatMap(res -> operation.apply(res)
-					.contextWrite(c -> c.put(McpAsyncClient.NEGOTIATED_PROTOCOL_VERSION,
-							res.initializeResult().protocolVersion())));
+					.timeout(this.initializationTimeout)
+					.onErrorResume(ex -> {
+						this.initializationRef.compareAndSet(newInit, null);
+						return Mono.error(new RuntimeException("Client failed to initialize " + actionName, ex));
+					})
+					.flatMap(res -> operation.apply(res)
+							.contextWrite(c -> c.put(McpAsyncClient.NEGOTIATED_PROTOCOL_VERSION,
+									res.initializeResult().protocolVersion())));
 		});
 	}
 
 	private Mono<McpSchema.InitializeResult> doInitialize(DefaultInitialization initialization,
-			Function<Initialization, Mono<Void>> postInitOperation, ContextView ctx) {
+														  Function<Initialization, Mono<Void>> postInitOperation, ContextView ctx) {
 
 		initialization.setMcpClientSession(this.sessionSupplier.apply(ctx));
 
@@ -315,15 +323,15 @@ class LifecycleInitializer {
 
 			if (!this.protocolVersions.contains(initializeResult.protocolVersion())) {
 				return Mono.error(McpError.builder(-32602)
-					.message("Unsupported protocol version")
-					.data("Unsupported protocol version from the server: " + initializeResult.protocolVersion())
-					.build());
+						.message("Unsupported protocol version")
+						.data("Unsupported protocol version from the server: " + initializeResult.protocolVersion())
+						.build());
 			}
 
 			return mcpClientSession.sendNotification(McpSchema.METHOD_NOTIFICATION_INITIALIZED, null)
-				.contextWrite(
-						c -> c.put(McpAsyncClient.NEGOTIATED_PROTOCOL_VERSION, initializeResult.protocolVersion()))
-				.thenReturn(initializeResult);
+					.contextWrite(
+							c -> c.put(McpAsyncClient.NEGOTIATED_PROTOCOL_VERSION, initializeResult.protocolVersion()))
+					.thenReturn(initializeResult);
 		}).flatMap(initializeResult -> {
 			initialization.cacheResult(initializeResult);
 			return postInitOperation.apply(initialization).thenReturn(initializeResult);
