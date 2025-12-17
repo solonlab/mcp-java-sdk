@@ -14,13 +14,13 @@ import org.noear.solon.core.handle.Entity;
 import org.noear.solon.core.handle.StatusCodes;
 import org.noear.solon.core.util.MimeType;
 import org.noear.solon.rx.handle.RxEntity;
-import org.noear.solon.web.sse.SseEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import reactor.core.publisher.Mono;
 
 import java.io.IOException;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Implementation of a WebFlux based {@link McpStatelessServerTransport}.
@@ -108,7 +108,8 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 			try {
 				McpSchema.JSONRPCMessage message = McpSchema.deserializeJsonRpcMessage(jsonMapper, body);
 
-				if (message instanceof McpSchema.JSONRPCRequest jsonrpcRequest) {
+				if (message instanceof McpSchema.JSONRPCRequest) {
+					McpSchema.JSONRPCRequest jsonrpcRequest = (McpSchema.JSONRPCRequest)message;
 					return this.mcpHandler.handleRequest(transportContext, jsonrpcRequest).flatMap(jsonrpcResponse -> {
 						try {
 							String json = jsonMapper.writeValueAsString(jsonrpcResponse);
@@ -121,7 +122,8 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 						}
 					});
 				}
-				else if (message instanceof McpSchema.JSONRPCNotification jsonrpcNotification) {
+				else if (message instanceof McpSchema.JSONRPCNotification) {
+					McpSchema.JSONRPCNotification jsonrpcNotification = (McpSchema.JSONRPCNotification)message;
 					return this.mcpHandler.handleNotification(transportContext, jsonrpcNotification)
 							.then(RxEntity.accepted().build());
 				}
@@ -157,8 +159,11 @@ public class WebRxStatelessServerTransport implements McpStatelessServerTranspor
 
 		private String mcpEndpoint = "/mcp";
 
-		private McpTransportContextExtractor<Context> contextExtractor = (
-				serverRequest) -> McpTransportContext.EMPTY;
+		private McpTransportContextExtractor<Context> contextExtractor = (serverRequest) -> {
+			Map<String,Object> context = new HashMap<>();
+			context.put(Context.class.getName(), serverRequest);
+			return McpTransportContext.create(context);
+		};
 
 		private Builder() {
 			// used by a static method
