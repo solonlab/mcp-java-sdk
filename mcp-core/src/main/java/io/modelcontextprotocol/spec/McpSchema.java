@@ -670,6 +670,14 @@ public final class McpSchema {
                 this(null, null);
             }
 
+			public Form form(){
+				return form;
+			}
+
+			public Url url(){
+				return url;
+			}
+
 			/**
 			 * Marker record indicating support for form-based elicitation mode.
 			 */
@@ -3297,7 +3305,7 @@ public final class McpSchema {
 	 * A request that supports pagination using cursors.
 	 *
 	 */
-	@NoArgsConstructor @EqualsAndHashCode @ToString
+	@EqualsAndHashCode @ToString
 	@JsonInclude(JsonInclude.Include.NON_ABSENT)
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	public static class PaginatedRequest  implements Request { // @formatter:on
