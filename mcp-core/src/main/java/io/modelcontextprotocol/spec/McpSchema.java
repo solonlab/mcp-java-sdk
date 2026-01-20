@@ -192,14 +192,13 @@ public final class McpSchema {
 
 	/**
 	 * Deserializes a JSON string into a JSONRPCMessage object.
-	 *
 	 * @param jsonMapper The JsonMapper instance to use for deserialization
-	 * @param jsonText   The JSON string to deserialize
+	 * @param jsonText The JSON string to deserialize
 	 * @return A JSONRPCMessage instance using either the {@link JSONRPCRequest},
 	 * {@link JSONRPCNotification}, or {@link JSONRPCResponse} classes.
-	 * @throws IOException              If there's an error during deserialization
+	 * @throws IOException If there's an error during deserialization
 	 * @throws IllegalArgumentException If the JSON structure doesn't match any known
-	 *                                  message type
+	 * message type
 	 */
 	public static JSONRPCMessage deserializeJsonRpcMessage(McpJsonMapper jsonMapper, String jsonText)
 			throws IOException {
@@ -520,7 +519,7 @@ public final class McpSchema {
 		}
 
 		public InitializeResult(String protocolVersion, ServerCapabilities capabilities, Implementation serverInfo,
-								String instructions) {
+				String instructions) {
 			this(protocolVersion, capabilities, serverInfo, instructions, null);
 		}
 
@@ -633,10 +632,58 @@ public final class McpSchema {
 		 * maintain control over user interactions and data sharing while enabling servers
 		 * to gather necessary information dynamically. Servers can request structured
 		 * data from users with optional JSON schemas to validate responses.
+		 *
+		 * <p>
+		 * Per the 2025-11-25 spec, clients can declare support for specific elicitation
+		 * modes:
+		 * <ul>
+		 * <li>{@code form} - In-band structured data collection with optional schema
+		 * validation</li>
+		 * <li>{@code url} - Out-of-band interaction via URL navigation</li>
+		 * </ul>
+		 *
+		 * <p>
+		 * For backward compatibility, an empty elicitation object {@code {}} is
+		 * equivalent to declaring support for form mode only.
+		 *
 		 */
-		@NoArgsConstructor @EqualsAndHashCode @ToString
+		@EqualsAndHashCode @ToString
 		@JsonInclude(JsonInclude.Include.NON_ABSENT)
 		public static class Elicitation {
+            private @JsonProperty("form") Form form;
+            private @JsonProperty("url") Url url;
+
+            /**
+             * @param form support for in-band form-based elicitation
+             * @param url support for out-of-band URL-based elicitation
+            * */
+            public Elicitation(@JsonProperty("form") Form form, @JsonProperty("url") Url url){
+                this.form = form;
+                this.url = url;
+            }
+
+            /**
+             * Creates an Elicitation with default settings (backward compatible, produces
+             * empty JSON object).
+             */
+            public Elicitation() {
+                this(null, null);
+            }
+
+			/**
+			 * Marker record indicating support for form-based elicitation mode.
+			 */
+			@JsonInclude(JsonInclude.Include.NON_ABSENT)
+			public record Form() {
+			}
+
+			/**
+			 * Marker record indicating support for URL-based elicitation mode.
+			 */
+			@JsonInclude(JsonInclude.Include.NON_ABSENT)
+			public record Url() {
+			}
+
 		}
 
 		public static Builder builder() {
@@ -668,8 +715,25 @@ public final class McpSchema {
 				return this;
 			}
 
+			/**
+			 * Enables elicitation capability with default settings (backward compatible,
+			 * produces empty JSON object).
+			 * @return this builder
+			 */
 			public Builder elicitation() {
 				this.elicitation = new Elicitation();
+				return this;
+			}
+
+			/**
+			 * Enables elicitation capability with explicit form and/or url mode support.
+			 * @param form whether to support form-based elicitation
+			 * @param url whether to support URL-based elicitation
+			 * @return this builder
+			 */
+			public Builder elicitation(boolean form, boolean url) {
+				this.elicitation = new Elicitation(form ? new Elicitation.Form() : null,
+						url ? new Elicitation.Url() : null);
 				return this;
 			}
 
@@ -952,7 +1016,7 @@ public final class McpSchema {
 	// Existing Enums and Base Types (from previous implementation)
 	public enum Role {
 
-		// @formatter:off
+	// @formatter:off
 		@JsonProperty("user") USER,
 		@JsonProperty("assistant") ASSISTANT
 	} // @formatter:on
@@ -1132,7 +1196,7 @@ public final class McpSchema {
 		 */
 		@Deprecated
 		public Resource(String uri, String name, String title, String description, String mimeType, Long size,
-						Annotations annotations) {
+				Annotations annotations) {
 			this(uri, name, title, description, mimeType, size, annotations, null);
 		}
 
@@ -1142,7 +1206,7 @@ public final class McpSchema {
 		 */
 		@Deprecated
 		public Resource(String uri, String name, String description, String mimeType, Long size,
-						Annotations annotations) {
+				Annotations annotations) {
 			this(uri, name, null, description, mimeType, size, annotations, null);
 		}
 
@@ -1291,15 +1355,14 @@ public final class McpSchema {
 		}
 
 		public ResourceTemplate(String uriTemplate, String name, String title, String description, String mimeType,
-								Annotations annotations) {
+				Annotations annotations) {
 			this(uriTemplate, name, title, description, mimeType, annotations, null);
 		}
 
 		public ResourceTemplate(String uriTemplate, String name, String description, String mimeType,
-								Annotations annotations) {
+				Annotations annotations) {
 			this(uriTemplate, name, null, description, mimeType, annotations);
 		}
-
 
 		public static Builder builder() {
 			return new Builder();
@@ -2823,15 +2886,15 @@ public final class McpSchema {
 
 		// backwards compatibility constructor
 		public CreateMessageRequest(List<SamplingMessage> messages, ModelPreferences modelPreferences,
-									String systemPrompt, ContextInclusionStrategy includeContext, Double temperature, Integer maxTokens,
-									List<String> stopSequences, Map<String, Object> metadata) {
+				String systemPrompt, ContextInclusionStrategy includeContext, Double temperature, Integer maxTokens,
+				List<String> stopSequences, Map<String, Object> metadata) {
 			this(messages, modelPreferences, systemPrompt, includeContext, temperature, maxTokens, stopSequences,
 					metadata, null);
 		}
 
 		public enum ContextInclusionStrategy {
 
-			// @formatter:off
+		// @formatter:off
 			@JsonProperty("none") NONE,
 			@JsonProperty("thisServer") THIS_SERVER,
 			@JsonProperty("allServers")ALL_SERVERS
@@ -2977,14 +3040,14 @@ public final class McpSchema {
 
 		public enum StopReason {
 
-			// @formatter:off
+		// @formatter:off
 			@JsonProperty("endTurn") END_TURN("endTurn"),
 			@JsonProperty("stopSequence") STOP_SEQUENCE("stopSequence"),
 			@JsonProperty("maxTokens") MAX_TOKENS("maxTokens"),
 			@JsonProperty("unknown") UNKNOWN("unknown");
 			// @formatter:on
 
-			private String value;
+			private final String value;
 
 			StopReason(String value) {
 				this.value = value;
@@ -2993,9 +3056,9 @@ public final class McpSchema {
 			@JsonCreator
 			private static StopReason of(String value) {
 				return Arrays.stream(StopReason.values())
-						.filter(stopReason -> stopReason.value.equals(value))
-						.findFirst()
-						.orElse(StopReason.UNKNOWN);
+					.filter(stopReason -> stopReason.value.equals(value))
+					.findFirst()
+					.orElse(StopReason.UNKNOWN);
 			}
 
 		}
@@ -3182,7 +3245,7 @@ public final class McpSchema {
 
 		public enum Action {
 
-			// @formatter:off
+		// @formatter:off
 			@JsonProperty("accept") ACCEPT,
 			@JsonProperty("decline") DECLINE,
 			@JsonProperty("cancel") CANCEL
@@ -3262,12 +3325,21 @@ public final class McpSchema {
 		public PaginatedRequest(String cursor) {
 			this(cursor, null);
 		}
+
+		/**
+		 * Creates a new paginated request with an empty cursor.
+		 */
+		public PaginatedRequest() {
+			this(null);
+		}
 	}
 
 	/**
 	 * An opaque token representing the pagination position after the last returned
 	 * result. If present, there may be more results available.
 	 *
+	 * @param nextCursor An opaque token representing the pagination position after the
+	 * last returned result. If present, there may be more results available
 	 */
 	@NoArgsConstructor @EqualsAndHashCode @ToString
 	@JsonInclude(JsonInclude.Include.NON_ABSENT)
@@ -3477,7 +3549,7 @@ public final class McpSchema {
 
 	public enum LoggingLevel {
 
-		// @formatter:off
+	// @formatter:off
 		@JsonProperty("debug") DEBUG(0),
 		@JsonProperty("info") INFO(1),
 		@JsonProperty("notice") NOTICE(2),
@@ -3488,7 +3560,7 @@ public final class McpSchema {
 		@JsonProperty("emergency") EMERGENCY(7);
 		// @formatter:on
 
-		private int level;
+		private final int level;
 
 		LoggingLevel(int level) {
 			this.level = level;
