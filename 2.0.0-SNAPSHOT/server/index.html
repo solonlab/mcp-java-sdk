@@ -836,6 +836,51 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-handling-in-tool-implementations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Handling in Tool Implementations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Handling in Tool Implementations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-tiers-of-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two Tiers of Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1536,6 +1581,51 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Error Handling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-handling-in-tool-implementations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Handling in Tool Implementations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Error Handling in Tool Implementations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#two-tiers-of-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Two Tiers of Errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#decision-guide" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Decision Guide
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -2324,6 +2414,48 @@ Log notifications can only be sent from within an existing client session, such 
 Supported logging levels (in order of increasing severity): DEBUG (0), INFO (1), NOTICE (2), WARNING (3), ERROR (4), CRITICAL (5), ALERT (6), EMERGENCY (7)</p>
 <h2 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h2>
 <p>The SDK provides comprehensive error handling through the McpError class, covering protocol compatibility, transport communication, JSON-RPC messaging, tool execution, resource management, prompt handling, timeouts, and connection issues. This unified error handling approach ensures consistent and reliable error management across both synchronous and asynchronous operations.</p>
+<h3 id="error-handling-in-tool-implementations">Error Handling in Tool Implementations<a class="headerlink" href="#error-handling-in-tool-implementations" title="Permanent link">&para;</a></h3>
+<h4 id="two-tiers-of-errors">Two Tiers of Errors<a class="headerlink" href="#two-tiers-of-errors" title="Permanent link">&para;</a></h4>
+<p>MCP distinguishes between two categories of errors in tool execution:</p>
+<p><strong>1. Tool-Level Errors (Recoverable by the LLM)</strong></p>
+<p>Use <code>CallToolResult</code> with <code>isError(true)</code> for validation failures, missing arguments, or domain errors the LLM can act on and retry.</p>
+<div class="highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a><span class="c1">// Example: Domain validation failure (e.g., invalid email format)</span>
+</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">emailAddress</span><span class="p">.</span><span class="na">matches</span><span class="p">(</span><span class="s">&quot;^[A-Za-z0-9+_.-]+@(.+)$&quot;</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-30-3"><a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="n">CallToolResult</span><span class="p">.</span><span class="na">builder</span><span class="p">()</span>
+</span><span id="__span-30-4"><a id="__codelineno-30-4" name="__codelineno-30-4" href="#__codelineno-30-4"></a><span class="w">        </span><span class="p">.</span><span class="na">content</span><span class="p">(</span><span class="n">List</span><span class="p">.</span><span class="na">of</span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">McpSchema</span><span class="p">.</span><span class="na">TextContent</span><span class="p">(</span><span class="s">&quot;Invalid argument: &#39;email&#39; must be a valid email address.&quot;</span><span class="p">)))</span>
+</span><span id="__span-30-5"><a id="__codelineno-30-5" name="__codelineno-30-5" href="#__codelineno-30-5"></a><span class="w">        </span><span class="p">.</span><span class="na">isError</span><span class="p">(</span><span class="kc">true</span><span class="p">)</span>
+</span><span id="__span-30-6"><a id="__codelineno-30-6" name="__codelineno-30-6" href="#__codelineno-30-6"></a><span class="w">        </span><span class="p">.</span><span class="na">build</span><span class="p">();</span>
+</span><span id="__span-30-7"><a id="__codelineno-30-7" name="__codelineno-30-7" href="#__codelineno-30-7"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>The LLM receives this as part of the normal tool response and can self-correct in a subsequent interaction.</p>
+<p><strong>2. Protocol-Level Errors (Unrecoverable)</strong></p>
+<p>Uncaught exceptions from a tool handler are mapped to a JSON-RPC error response. Use this only for truly unexpected failures (e.g., infrastructure errors such as DB timeout), not for input validation.</p>
+<div class="highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a><span class="c1">// This propagates as a JSON-RPC error — use sparingly</span>
+</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="k">throw</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">McpError</span><span class="p">(</span><span class="n">McpSchema</span><span class="p">.</span><span class="na">ErrorCodes</span><span class="p">.</span><span class="na">INTERNAL_ERROR</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;Unexpected failure&quot;</span><span class="p">);</span>
+</span></code></pre></div>
+<h4 id="decision-guide">Decision Guide<a class="headerlink" href="#decision-guide" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Approach</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Domain validation failure</td>
+<td><code>CallToolResult</code> with <code>isError=true</code></td>
+</tr>
+<tr>
+<td>Infrastructure / unexpected error</td>
+<td>Throw <code>McpError</code> or let it propagate</td>
+</tr>
+<tr>
+<td>Partial success with a warning</td>
+<td><code>CallToolResult</code> with warning in text</td>
+</tr>
+</tbody>
+</table>
 
 
 
