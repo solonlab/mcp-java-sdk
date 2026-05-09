@@ -4,6 +4,8 @@
 
 package io.modelcontextprotocol;
 
+import static io.modelcontextprotocol.util.ToolsUtils.EMPTY_JSON_SCHEMA;
+
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -32,7 +34,6 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import reactor.core.publisher.Mono;
 
-import static io.modelcontextprotocol.util.ToolsUtils.EMPTY_JSON_SCHEMA;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static net.javacrumbs.jsonunit.assertj.JsonAssertions.json;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -61,7 +62,8 @@ public abstract class AbstractStatelessIntegrationTests {
 
 		try (
 				// Create client without sampling capabilities
-				var client = clientBuilder.clientInfo(new McpSchema.Implementation("Sample " + "client", "0.0.0"))
+				var client = clientBuilder
+					.clientInfo(McpSchema.Implementation.builder("Sample " + "client", "0.0.0").build())
 					.requestTimeout(Duration.ofSeconds(1000))
 					.build()) {
 
@@ -82,10 +84,13 @@ public abstract class AbstractStatelessIntegrationTests {
 
 		var clientBuilder = clientBuilders.get(clientType);
 
-		var callResponse = new McpSchema.CallToolResult(List.of(new McpSchema.TextContent("CALL RESPONSE")), null);
+		var callResponse = McpSchema.CallToolResult.builder()
+			.content(List.of(McpSchema.TextContent.builder("CALL RESPONSE").build()))
+			.isError(false)
+			.build();
 		McpStatelessServerFeatures.SyncToolSpecification tool1 = McpStatelessServerFeatures.SyncToolSpecification
 			.builder()
-			.tool(Tool.builder().name("tool1").description("tool1 description").inputSchema(EMPTY_JSON_SCHEMA).build())
+			.tool(Tool.builder("tool1", EMPTY_JSON_SCHEMA).description("tool1 description").build())
 			.callHandler((ctx, request) -> {
 
 				try {
@@ -117,7 +122,8 @@ public abstract class AbstractStatelessIntegrationTests {
 
 			assertThat(mcpClient.listTools().tools()).contains(tool1.tool());
 
-			CallToolResult response = mcpClient.callTool(new McpSchema.CallToolRequest("tool1", Map.of()));
+			CallToolResult response = mcpClient
+				.callTool(McpSchema.CallToolRequest.builder("tool1").arguments(Map.of()).build());
 
 			assertThat(response).isNotNull().isEqualTo(callResponse);
 		}
@@ -135,11 +141,7 @@ public abstract class AbstractStatelessIntegrationTests {
 		McpStatelessSyncServer mcpServer = prepareSyncServerBuilder()
 			.capabilities(ServerCapabilities.builder().tools(true).build())
 			.tools(McpStatelessServerFeatures.SyncToolSpecification.builder()
-				.tool(Tool.builder()
-					.name("tool1")
-					.description("tool1 description")
-					.inputSchema(EMPTY_JSON_SCHEMA)
-					.build())
+				.tool(Tool.builder("tool1", EMPTY_JSON_SCHEMA).description("tool1 description").build())
 				.callHandler((context, request) -> {
 					// We trigger a timeout on blocking read, raising an exception
 					Mono.never().block(Duration.ofSeconds(1));
@@ -155,8 +157,8 @@ public abstract class AbstractStatelessIntegrationTests {
 			// We expect the tool call to fail immediately with the exception raised by
 			// the offending tool
 			// instead of getting back a timeout.
-			assertThatExceptionOfType(McpError.class)
-				.isThrownBy(() -> mcpClient.callTool(new McpSchema.CallToolRequest("tool1", Map.of())))
+			assertThatExceptionOfType(McpError.class).isThrownBy(
+					() -> mcpClient.callTool(McpSchema.CallToolRequest.builder("tool1").arguments(Map.of()).build()))
 				.withMessageContaining("Timeout on blocking read");
 		}
 		finally {
@@ -170,10 +172,13 @@ public abstract class AbstractStatelessIntegrationTests {
 
 		var clientBuilder = clientBuilders.get(clientType);
 
-		var callResponse = new McpSchema.CallToolResult(List.of(new McpSchema.TextContent("CALL RESPONSE")), null);
+		var callResponse = McpSchema.CallToolResult.builder()
+			.content(List.of(McpSchema.TextContent.builder("CALL RESPONSE").build()))
+			.isError(false)
+			.build();
 		McpStatelessServerFeatures.SyncToolSpecification tool1 = McpStatelessServerFeatures.SyncToolSpecification
 			.builder()
-			.tool(Tool.builder().name("tool1").description("tool1 description").inputSchema(EMPTY_JSON_SCHEMA).build())
+			.tool(Tool.builder("tool1", EMPTY_JSON_SCHEMA).description("tool1 description").build())
 			.callHandler((ctx, request) -> {
 				// perform a blocking call to a remote service
 				try {
@@ -231,11 +236,7 @@ public abstract class AbstractStatelessIntegrationTests {
 			// Add a new tool
 			McpStatelessServerFeatures.SyncToolSpecification tool2 = McpStatelessServerFeatures.SyncToolSpecification
 				.builder()
-				.tool(Tool.builder()
-					.name("tool2")
-					.description("tool2 description")
-					.inputSchema(EMPTY_JSON_SCHEMA)
-					.build())
+				.tool(Tool.builder("tool2", EMPTY_JSON_SCHEMA).description("tool2 description").build())
 				.callHandler((exchange, request) -> callResponse)
 				.build();
 
@@ -278,8 +279,7 @@ public abstract class AbstractStatelessIntegrationTests {
 						Map.of("type", "string"), "timestamp", Map.of("type", "string")),
 				"required", List.of("result", "operation"));
 
-		Tool calculatorTool = Tool.builder()
-			.name("calculator")
+		Tool calculatorTool = Tool.builder("calculator")
 			.description("Performs mathematical calculations")
 			.outputSchema(outputSchema)
 			.build();
@@ -313,8 +313,8 @@ public abstract class AbstractStatelessIntegrationTests {
 			// Note: outputSchema might be null in sync server, but validation still works
 
 			// Call tool with valid structured output
-			CallToolResult response = mcpClient
-				.callTool(new McpSchema.CallToolRequest("calculator", Map.of("expression", "2 + 3")));
+			CallToolResult response = mcpClient.callTool(
+					McpSchema.CallToolRequest.builder("calculator").arguments(Map.of("expression", "2 + 3")).build());
 
 			assertThat(response).isNotNull();
 			assertThat(response.isError()).isFalse();
@@ -358,8 +358,7 @@ public abstract class AbstractStatelessIntegrationTests {
 					"age", Map.of("type", "number")),					
 				"required", List.of("name", "age"))); // @formatter:on
 
-		Tool calculatorTool = Tool.builder()
-			.name("getMembers")
+		Tool calculatorTool = Tool.builder("getMembers")
 			.description("Returns a list of members")
 			.outputSchema(outputSchema)
 			.build();
@@ -383,7 +382,8 @@ public abstract class AbstractStatelessIntegrationTests {
 			assertThat(mcpClient.initialize()).isNotNull();
 
 			// Call tool with valid structured output of type array
-			CallToolResult response = mcpClient.callTool(new McpSchema.CallToolRequest("getMembers", Map.of()));
+			CallToolResult response = mcpClient
+				.callTool(McpSchema.CallToolRequest.builder("getMembers").arguments(Map.of()).build());
 
 			assertThat(response).isNotNull();
 			assertThat(response.isError()).isFalse();
@@ -413,8 +413,7 @@ public abstract class AbstractStatelessIntegrationTests {
 						Map.of("type", "string"), "timestamp", Map.of("type", "string")),
 				"required", List.of("result", "operation"));
 
-		Tool calculatorTool = Tool.builder()
-			.name("calculator")
+		Tool calculatorTool = Tool.builder("calculator")
 			.description("Performs mathematical calculations")
 			.outputSchema(outputSchema)
 			.build();
@@ -425,7 +424,7 @@ public abstract class AbstractStatelessIntegrationTests {
 			.tool(calculatorTool)
 			.callHandler((exchange, request) -> CallToolResult.builder()
 				.isError(true)
-				.content(List.of(new TextContent("Error calling tool: Simulated in-handler error")))
+				.content(List.of(TextContent.builder("Error calling tool: Simulated in-handler error").build()))
 				.build())
 			.build();
 
@@ -445,14 +444,14 @@ public abstract class AbstractStatelessIntegrationTests {
 			// Note: outputSchema might be null in sync server, but validation still works
 
 			// Call tool with valid structured output
-			CallToolResult response = mcpClient
-				.callTool(new McpSchema.CallToolRequest("calculator", Map.of("expression", "2 + 3")));
+			CallToolResult response = mcpClient.callTool(
+					McpSchema.CallToolRequest.builder("calculator").arguments(Map.of("expression", "2 + 3")).build());
 
 			assertThat(response).isNotNull();
 			assertThat(response.isError()).isTrue();
 			assertThat(response.content()).isNotEmpty();
-			assertThat(response.content())
-				.containsExactly(new McpSchema.TextContent("Error calling tool: Simulated in-handler error"));
+			assertThat(response.content()).containsExactly(
+					McpSchema.TextContent.builder("Error calling tool: Simulated in-handler error").build());
 			assertThat(response.structuredContent()).isNull();
 		}
 		finally {
@@ -471,8 +470,7 @@ public abstract class AbstractStatelessIntegrationTests {
 				Map.of("result", Map.of("type", "number"), "operation", Map.of("type", "string")), "required",
 				List.of("result", "operation"));
 
-		Tool calculatorTool = Tool.builder()
-			.name("calculator")
+		Tool calculatorTool = Tool.builder("calculator")
 			.description("Performs mathematical calculations")
 			.outputSchema(outputSchema)
 			.build();
@@ -500,8 +498,8 @@ public abstract class AbstractStatelessIntegrationTests {
 			assertThat(initResult).isNotNull();
 
 			// Call tool with invalid structured output
-			CallToolResult response = mcpClient
-				.callTool(new McpSchema.CallToolRequest("calculator", Map.of("expression", "2 + 3")));
+			CallToolResult response = mcpClient.callTool(
+					McpSchema.CallToolRequest.builder("calculator").arguments(Map.of("expression", "2 + 3")).build());
 
 			assertThat(response).isNotNull();
 			assertThat(response.isError()).isTrue();
@@ -526,8 +524,7 @@ public abstract class AbstractStatelessIntegrationTests {
 		Map<String, Object> outputSchema = Map.of("type", "object", "properties",
 				Map.of("result", Map.of("type", "number")), "required", List.of("result"));
 
-		Tool calculatorTool = Tool.builder()
-			.name("calculator")
+		Tool calculatorTool = Tool.builder("calculator")
 			.description("Performs mathematical calculations")
 			.outputSchema(outputSchema)
 			.build();
@@ -550,8 +547,8 @@ public abstract class AbstractStatelessIntegrationTests {
 			assertThat(initResult).isNotNull();
 
 			// Call tool that should return structured content but doesn't
-			CallToolResult response = mcpClient
-				.callTool(new McpSchema.CallToolRequest("calculator", Map.of("expression", "2 + 3")));
+			CallToolResult response = mcpClient.callTool(
+					McpSchema.CallToolRequest.builder("calculator").arguments(Map.of("expression", "2 + 3")).build());
 
 			assertThat(response).isNotNull();
 			assertThat(response.isError()).isTrue();
@@ -590,8 +587,7 @@ public abstract class AbstractStatelessIntegrationTests {
 					Map.of("message", Map.of("type", "string"), "count", Map.of("type", "integer")), "required",
 					List.of("message", "count"));
 
-			Tool dynamicTool = Tool.builder()
-				.name("dynamic-tool")
+			Tool dynamicTool = Tool.builder("dynamic-tool")
 				.description("Dynamically added tool")
 				.outputSchema(outputSchema)
 				.build();
@@ -623,7 +619,7 @@ public abstract class AbstractStatelessIntegrationTests {
 
 			// Call dynamically added tool
 			CallToolResult response = mcpClient
-				.callTool(new McpSchema.CallToolRequest("dynamic-tool", Map.of("count", 3)));
+				.callTool(McpSchema.CallToolRequest.builder("dynamic-tool").arguments(Map.of("count", 3)).build());
 
 			assertThat(response).isNotNull();
 			assertThat(response.isError()).isFalse();

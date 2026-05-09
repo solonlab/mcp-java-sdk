@@ -5,7 +5,7 @@
 [![Java Version](https://img.shields.io/badge/Java-17%2B-orange)](https://www.oracle.com/java/technologies/javase/jdk17-archive-downloads.html)
 
 
-A set of projects that provide Java SDK integration for the [Model Context Protocol](https://modelcontextprotocol.org/docs/concepts/architecture). 
+A set of projects that provide Java SDK integration for the [Model Context Protocol](https://modelcontextprotocol.io/docs/concepts/architecture). 
 This SDK enables Java applications to interact with AI models and tools through a standardized interface, supporting both synchronous and asynchronous communication patterns.
 
 ## 📚 Reference Documentation 
@@ -13,14 +13,17 @@ This SDK enables Java applications to interact with AI models and tools through 
 #### MCP Java SDK documentation
 For comprehensive guides and SDK API documentation
 
-- [Features](https://modelcontextprotocol.io/sdk/java/mcp-overview#features) - Overview the features provided by the Java MCP SDK
-- [Architecture](https://modelcontextprotocol.io/sdk/java/mcp-overview#architecture) - Java MCP SDK architecture overview.
-- [Java Dependencies / BOM](https://modelcontextprotocol.io/sdk/java/mcp-overview#dependencies) - Java dependencies and BOM.
-- [Java MCP Client](https://modelcontextprotocol.io/sdk/java/mcp-client) - Learn how to use the MCP client to interact with MCP servers.
-- [Java MCP Server](https://modelcontextprotocol.io/sdk/java/mcp-server) - Learn how to implement and configure a MCP servers.
+- [Features](https://modelcontextprotocol.github.io/java-sdk/#features) - Overview the features provided by the Java MCP SDK
+- [Architecture](https://modelcontextprotocol.github.io/java-sdk/#architecture) - Java MCP SDK architecture overview.
+- [Java Dependencies / BOM](https://java.sdk.modelcontextprotocol.io/latest/quickstart/#dependencies) - Java dependencies and BOM.
+- [Java MCP Client](https://java.sdk.modelcontextprotocol.io/latest/client/) - Learn how to use the MCP client to interact with MCP servers.
+- [Java MCP Server](https://java.sdk.modelcontextprotocol.io/latest/server/) - Learn how to implement and configure a MCP servers.
 
 #### Spring AI MCP documentation
-[Spring AI MCP](https://docs.spring.io/spring-ai/reference/api/mcp/mcp-overview.html) extends the MCP Java SDK with Spring Boot integration, providing both [client](https://docs.spring.io/spring-ai/reference/api/mcp/mcp-client-boot-starter-docs.html) and [server](https://docs.spring.io/spring-ai/reference/api/mcp/mcp-server-boot-starter-docs.html) starters. Bootstrap your AI applications with MCP support using [Spring Initializer](https://start.spring.io).
+[Spring AI MCP](https://docs.spring.io/spring-ai/reference/2.0-SNAPSHOT/api/mcp/mcp-overview.html) extends the MCP Java SDK with Spring Boot integration, providing both [client](https://docs.spring.io/spring-ai/reference/2.0-SNAPSHOT/api/mcp/mcp-client-boot-starter-docs.html) and [server](https://docs.spring.io/spring-ai/reference/2.0-SNAPSHOT/api/mcp/mcp-server-boot-starter-docs.html) starters. 
+The [MCP Annotations](https://docs.spring.io/spring-ai/reference/2.0-SNAPSHOT/api/mcp/mcp-annotations-overview.html) - provides annotation-based method handling for MCP servers and clients in Java.
+The [MCP Security](https://docs.spring.io/spring-ai/reference/2.0-SNAPSHOT/api/mcp/mcp-security.html) - provides comprehensive OAuth 2.0 and API key-based security support for Model Context Protocol implementations in Spring AI.
+Bootstrap your AI applications with MCP support using [Spring Initializer](https://start.spring.io).
 
 ## Development
 
@@ -36,6 +39,41 @@ To run the tests you have to pre-install `Docker` and `npx`.
 
 ```bash
 ./mvnw test
+```
+### Conformance Tests
+
+The SDK is validated against the [MCP conformance test suite](https://github.com/modelcontextprotocol/conformance) at 0.1.15 version.
+Full details and instructions are in [`conformance-tests/VALIDATION_RESULTS.md`](conformance-tests/VALIDATION_RESULTS.md).
+
+**Latest results:**
+
+| Suite         | Result                                              |
+|---------------|-----------------------------------------------------|
+| Server        | ✅ 40/40 passed (100%)                              |
+| Client        | 🟡 3/4 scenarios, 9/10 checks passed                |
+| Auth (Spring) | 🟡 12/14 scenarios fully passing (98.9% checks)     |
+
+To run the conformance tests locally you need `npx` installed.
+
+```bash
+# Server conformance
+./mvnw compile -pl conformance-tests/server-servlet -am exec:java
+npx @modelcontextprotocol/conformance server --url http://localhost:8080/mcp --suite active
+
+# Client conformance
+./mvnw clean package -DskipTests -pl conformance-tests/client-jdk-http-client -am
+for scenario in initialize tools_call elicitation-sep1034-client-defaults sse-retry; do
+  npx @modelcontextprotocol/conformance client \
+    --command "java -jar conformance-tests/client-jdk-http-client/target/client-jdk-http-client-2.0.0-SNAPSHOT.jar" \
+    --scenario $scenario
+done
+
+# Auth conformance (Spring HTTP Client)
+./mvnw clean package -DskipTests -pl conformance-tests/client-spring-http-client -am
+npx @modelcontextprotocol/conformance@0.1.15 client \
+  --spec-version 2025-11-25 \
+  --command "java -jar conformance-tests/client-spring-http-client/target/client-spring-http-client-2.0.0-SNAPSHOT.jar" \
+  --suite auth
 ```
 
 ## Contributing
@@ -83,11 +121,11 @@ The following sections explain what we chose, why it made sense, and how the cho
 
 ### 1. JSON Serialization
 
-* **SDK Choice**: Jackson for JSON serialization and deserialization, behind an SDK abstraction (`mcp-json`)
+* **SDK Choice**: Jackson for JSON serialization and deserialization, behind an SDK abstraction (package `io.modelcontextprotocol.json` in `mcp-core`)
 
 * **Why**: Jackson is widely adopted across the Java ecosystem, provides strong performance and a mature annotation model, and is familiar to the SDK team and many potential contributors.
 
-* **How we expose it**: Public APIs use a zero-dependency abstraction (`mcp-json`). Jackson is shipped as the default implementation (`mcp-jackson2`), but alternatives can be plugged in.
+* **How we expose it**: Public APIs use a bundled abstraction. Jackson is shipped as the default implementation (`mcp-json-jackson3`), but alternatives can be plugged in.
 
 * **How it fits the SDK**: This offers a pragmatic default while keeping flexibility for projects that prefer different JSON libraries.
 
@@ -136,21 +174,21 @@ MCP supports both clients (applications consuming MCP servers) and servers (appl
 
 #### Client Transport in the SDK
 
-* **SDK Choice**: JDK HttpClient (Java 11+) as the default client, with optional Spring WebClient support
+* **SDK Choice**: JDK HttpClient (Java 11+) as the default client
 
-* **Why**: The JDK HttpClient is built-in, portable, and supports streaming responses. This keeps the default lightweight with no extra dependencies. Spring WebClient support is available for Spring-based projects.
+* **Why**: The JDK HttpClient is built-in, portable, and supports streaming responses. This keeps the default lightweight with no extra dependencies.
 
-* **How we expose it**: MCP Client APIs are transport-agnostic. The core module ships with JDK HttpClient transport. A Spring module provides WebClient integration.
+* **How we expose it**: MCP Client APIs are transport-agnostic. The core module ships with JDK HttpClient transport. Spring WebClient-based transport is available in [Spring AI](https://docs.spring.io/spring-ai/reference/2.0-SNAPSHOT/api/mcp/mcp-overview.html) 2.0+.
 
 * **How it fits the SDK**: This ensures all applications can talk to MCP servers out of the box, while allowing richer integration in Spring and other environments.
 
 #### Server Transport in the SDK
 
-* **SDK Choice**: Jakarta Servlet implementation in core, with optional Spring WebFlux and Spring WebMVC providers
+* **SDK Choice**: Jakarta Servlet implementation in core
 
-* **Why**: Servlet is the most widely deployed Java server API. WebFlux and WebMVC cover a significant part of the Spring community. Together these provide reach across blocking and non-blocking models.
+* **Why**: Servlet is the most widely deployed Java server API, providing broad reach across blocking and non-blocking models without additional dependencies.
 
-* **How we expose it**: Server APIs are transport-agnostic. Core includes Servlet support. Spring modules extend support for WebFlux and WebMVC.
+* **How we expose it**: Server APIs are transport-agnostic. Core includes Servlet support. Spring WebFlux and WebMVC server transports are available in [Spring AI](https://docs.spring.io/spring-ai/reference/2.0-SNAPSHOT/api/mcp/mcp-overview.html) 2.0+.
 
 * **How it fits the SDK**: This allows developers to expose MCP servers in the most common Java environments today, while enabling other transport implementations such as Netty, Vert.x, or Helidon.
 
@@ -168,14 +206,26 @@ MCP supports both clients (applications consuming MCP servers) and servers (appl
 
 The SDK is organized into modules to separate concerns and allow adopters to bring in only what they need:
 * `mcp-bom` – Dependency versions
-* `mcp-core` – Reference implementation (STDIO, JDK HttpClient, Servlet)
-* `mcp-json` – JSON abstraction
-* `mcp-jackson2` – Jackson implementation of JSON binding
-* `mcp` – Convenience bundle (core + Jackson)
+* `mcp-core` – Reference implementation (STDIO, JDK HttpClient, Servlet), JSON binding interface definitions
+* `mcp-json-jackson2` – Jackson 2 implementation of JSON binding
+* `mcp-json-jackson3` – Jackson 3 implementation of JSON binding
+* `mcp` – Convenience bundle (core + Jackson 3)
 * `mcp-test` – Shared testing utilities
-* `mcp-spring` – Spring integrations (WebClient, WebFlux, WebMVC)
 
-For example, a minimal adopter may depend only on `mcp` (core + Jackson), while a Spring-based application can use `mcp-spring` for deeper framework integration.
+Spring integrations (WebClient, WebFlux, WebMVC) are now part of [Spring AI](https://docs.spring.io/spring-ai/reference/2.0-SNAPSHOT/api/mcp/mcp-overview.html) 2.0+ (group `org.springframework.ai`).
+
+For example, a minimal adopter may depend only on `mcp` (core + Jackson), while a Spring-based application can use the Spring AI `mcp-spring-webflux` or `mcp-spring-webmvc` artifacts for deeper framework integration.
+
+Additionally, `mcp-test` contains integration tests for `mcp-core`.
+`mcp-core` needs a JSON implementation to run full integration tests.
+Implementations such as `mcp-json-jackson3`, depend on `mcp-core`, and therefore cannot be imported in `mcp-core` for tests.
+Instead, all integration tests that need a JSON implementation are now in `mcp-test`, and use `jackson3` by default.
+A `jackson2` maven profile allows to run integration tests with Jackson 2, like so:
+
+
+```bash
+./mvnw -pl mcp-test -am -Pjackson2 test
+```
 
 ### Future Directions
 

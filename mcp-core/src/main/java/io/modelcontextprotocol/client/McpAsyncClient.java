@@ -30,6 +30,7 @@ import io.modelcontextprotocol.spec.McpSchema.ElicitRequest;
 import io.modelcontextprotocol.spec.McpSchema.ElicitResult;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptRequest;
 import io.modelcontextprotocol.spec.McpSchema.GetPromptResult;
+import io.modelcontextprotocol.util.ToolNameValidator;
 import io.modelcontextprotocol.spec.McpSchema.ListPromptsResult;
 import io.modelcontextprotocol.spec.McpSchema.LoggingLevel;
 import io.modelcontextprotocol.spec.McpSchema.LoggingMessageNotification;
@@ -302,7 +303,7 @@ public class McpAsyncClient {
 				return Mono.empty();
 			}
 
-			return this.listToolsInternal(init, McpSchema.FIRST_PAGE).doOnNext(listToolsResult -> {
+			return this.listToolsInternal(init, McpSchema.FIRST_PAGE, null).doOnNext(listToolsResult -> {
 				listToolsResult.tools()
 					.forEach(tool -> logger.debug("Tool {} schema: {}", tool.name(), tool.outputSchema()));
 				if (enableCallToolSchemaCaching && listToolsResult.tools() != null) {
@@ -537,7 +538,7 @@ public class McpAsyncClient {
 
 			List<Root> roots = this.roots.values().stream().toList();
 
-			return Mono.just(new McpSchema.ListRootsResult(roots));
+			return Mono.just(McpSchema.ListRootsResult.builder(roots).build());
 		};
 	}
 
@@ -632,10 +633,10 @@ public class McpAsyncClient {
 		return this.listTools(McpSchema.FIRST_PAGE).expand(result -> {
 			String next = result.nextCursor();
 			return (next != null && !next.isEmpty()) ? this.listTools(next) : Mono.empty();
-		}).reduce(new McpSchema.ListToolsResult(new ArrayList<>(), null), (allToolsResult, result) -> {
-			allToolsResult.tools().addAll(result.tools());
-			return allToolsResult;
-		}).map(result -> new McpSchema.ListToolsResult(Collections.unmodifiableList(result.tools()), null));
+		}).reduce(new ArrayList<McpSchema.Tool>(), (accumulated, result) -> {
+			accumulated.addAll(result.tools());
+			return accumulated;
+		}).map(all -> McpSchema.ListToolsResult.builder(Collections.unmodifiableList(all)).build());
 	}
 
 	/**
@@ -644,18 +645,33 @@ public class McpAsyncClient {
 	 * @return A Mono that emits the list of tools result
 	 */
 	public Mono<McpSchema.ListToolsResult> listTools(String cursor) {
-		return this.initializer.withInitialization("listing tools", init -> this.listToolsInternal(init, cursor));
+		return this.initializer.withInitialization("listing tools", init -> this.listToolsInternal(init, cursor, null));
 	}
 
-	private Mono<McpSchema.ListToolsResult> listToolsInternal(Initialization init, String cursor) {
+	/**
+	 * Retrieves a paginated list of tools with optional metadata.
+	 * @param cursor Optional pagination cursor from a previous list request
+	 * @param meta Optional metadata to include in the request (_meta field)
+	 * @return A Mono that emits the list of tools result
+	 */
+	public Mono<McpSchema.ListToolsResult> listTools(String cursor, Map<String, Object> meta) {
+		return this.initializer.withInitialization("listing tools", init -> this.listToolsInternal(init, cursor, meta));
+	}
+
+	private Mono<McpSchema.ListToolsResult> listToolsInternal(Initialization init, String cursor,
+			Map<String, Object> meta) {
 
 		if (init.initializeResult().capabilities().tools() == null) {
 			return Mono.error(new IllegalStateException("Server does not provide tools capability"));
 		}
 		return init.mcpSession()
-			.sendRequest(McpSchema.METHOD_TOOLS_LIST, new McpSchema.PaginatedRequest(cursor),
+			.sendRequest(McpSchema.METHOD_TOOLS_LIST, new McpSchema.PaginatedRequest(cursor, meta),
 					LIST_TOOLS_RESULT_TYPE_REF)
 			.doOnNext(result -> {
+				// Validate tool names (warn only)
+				if (result.tools() != null) {
+					result.tools().forEach(tool -> ToolNameValidator.validate(tool.name(), false));
+				}
 				if (this.enableCallToolSchemaCaching && result.tools() != null) {
 					// Cache tools output schema
 					result.tools()
@@ -703,11 +719,11 @@ public class McpAsyncClient {
 	public Mono<McpSchema.ListResourcesResult> listResources() {
 		return this.listResources(McpSchema.FIRST_PAGE)
 			.expand(result -> (result.nextCursor() != null) ? this.listResources(result.nextCursor()) : Mono.empty())
-			.reduce(new McpSchema.ListResourcesResult(new ArrayList<>(), null), (allResourcesResult, result) -> {
-				allResourcesResult.resources().addAll(result.resources());
-				return allResourcesResult;
+			.reduce(new ArrayList<McpSchema.Resource>(), (accumulated, result) -> {
+				accumulated.addAll(result.resources());
+				return accumulated;
 			})
-			.map(result -> new McpSchema.ListResourcesResult(Collections.unmodifiableList(result.resources()), null));
+			.map(all -> McpSchema.ListResourcesResult.builder(Collections.unmodifiableList(all)).build());
 	}
 
 	/**
@@ -720,12 +736,30 @@ public class McpAsyncClient {
 	 * @see #readResource(McpSchema.Resource)
 	 */
 	public Mono<McpSchema.ListResourcesResult> listResources(String cursor) {
+		return this.listResourcesInternal(cursor, null);
+	}
+
+	/**
+	 * Retrieves a paginated list of resources provided by the server. Resources represent
+	 * any kind of UTF-8 encoded data that an MCP server makes available to clients, such
+	 * as database records, API responses, log files, and more.
+	 * @param cursor Optional pagination cursor from a previous list request
+	 * @param meta Optional metadata to include in the request (_meta field)
+	 * @return A Mono that completes with the list of resources result.
+	 * @see McpSchema.ListResourcesResult
+	 * @see #readResource(McpSchema.Resource)
+	 */
+	public Mono<McpSchema.ListResourcesResult> listResources(String cursor, Map<String, Object> meta) {
+		return this.listResourcesInternal(cursor, meta);
+	}
+
+	private Mono<McpSchema.ListResourcesResult> listResourcesInternal(String cursor, Map<String, Object> meta) {
 		return this.initializer.withInitialization("listing resources", init -> {
 			if (init.initializeResult().capabilities().resources() == null) {
 				return Mono.error(new IllegalStateException("Server does not provide the resources capability"));
 			}
 			return init.mcpSession()
-				.sendRequest(McpSchema.METHOD_RESOURCES_LIST, new McpSchema.PaginatedRequest(cursor),
+				.sendRequest(McpSchema.METHOD_RESOURCES_LIST, new McpSchema.PaginatedRequest(cursor, meta),
 						LIST_RESOURCES_RESULT_TYPE_REF);
 		});
 	}
@@ -740,7 +774,7 @@ public class McpAsyncClient {
 	 * @see McpSchema.ReadResourceResult
 	 */
 	public Mono<McpSchema.ReadResourceResult> readResource(McpSchema.Resource resource) {
-		return this.readResource(new McpSchema.ReadResourceRequest(resource.uri()));
+		return this.readResource(McpSchema.ReadResourceRequest.builder(resource.uri()).build());
 	}
 
 	/**
@@ -772,13 +806,11 @@ public class McpAsyncClient {
 		return this.listResourceTemplates(McpSchema.FIRST_PAGE)
 			.expand(result -> (result.nextCursor() != null) ? this.listResourceTemplates(result.nextCursor())
 					: Mono.empty())
-			.reduce(new McpSchema.ListResourceTemplatesResult(new ArrayList<>(), null),
-					(allResourceTemplatesResult, result) -> {
-						allResourceTemplatesResult.resourceTemplates().addAll(result.resourceTemplates());
-						return allResourceTemplatesResult;
-					})
-			.map(result -> new McpSchema.ListResourceTemplatesResult(
-					Collections.unmodifiableList(result.resourceTemplates()), null));
+			.reduce(new ArrayList<McpSchema.ResourceTemplate>(), (accumulated, result) -> {
+				accumulated.addAll(result.resourceTemplates());
+				return accumulated;
+			})
+			.map(all -> McpSchema.ListResourceTemplatesResult.builder(Collections.unmodifiableList(all)).build());
 	}
 
 	/**
@@ -790,12 +822,30 @@ public class McpAsyncClient {
 	 * @see McpSchema.ListResourceTemplatesResult
 	 */
 	public Mono<McpSchema.ListResourceTemplatesResult> listResourceTemplates(String cursor) {
+		return this.listResourceTemplatesInternal(cursor, null);
+	}
+
+	/**
+	 * Retrieves a paginated list of resource templates provided by the server. Resource
+	 * templates allow servers to expose parameterized resources using URI templates,
+	 * enabling dynamic resource access based on variable parameters.
+	 * @param cursor Optional pagination cursor from a previous list request
+	 * @param meta Optional metadata to include in the request (_meta field)
+	 * @return A Mono that completes with the list of resource templates result.
+	 * @see McpSchema.ListResourceTemplatesResult
+	 */
+	public Mono<McpSchema.ListResourceTemplatesResult> listResourceTemplates(String cursor, Map<String, Object> meta) {
+		return this.listResourceTemplatesInternal(cursor, meta);
+	}
+
+	private Mono<McpSchema.ListResourceTemplatesResult> listResourceTemplatesInternal(String cursor,
+			Map<String, Object> meta) {
 		return this.initializer.withInitialization("listing resource templates", init -> {
 			if (init.initializeResult().capabilities().resources() == null) {
 				return Mono.error(new IllegalStateException("Server does not provide the resources capability"));
 			}
 			return init.mcpSession()
-				.sendRequest(McpSchema.METHOD_RESOURCES_TEMPLATES_LIST, new McpSchema.PaginatedRequest(cursor),
+				.sendRequest(McpSchema.METHOD_RESOURCES_TEMPLATES_LIST, new McpSchema.PaginatedRequest(cursor, meta),
 						LIST_RESOURCE_TEMPLATES_RESULT_TYPE_REF);
 		});
 	}
@@ -846,7 +896,7 @@ public class McpAsyncClient {
 					new TypeRef<>() {
 					});
 
-			return readResource(new McpSchema.ReadResourceRequest(resourcesUpdatedNotification.uri()))
+			return readResource(McpSchema.ReadResourceRequest.builder(resourcesUpdatedNotification.uri()).build())
 				.flatMap(readResourceResult -> Flux.fromIterable(resourcesUpdateConsumers)
 					.flatMap(consumer -> consumer.apply(readResourceResult.contents()))
 					.onErrorResume(error -> {
@@ -875,11 +925,11 @@ public class McpAsyncClient {
 	public Mono<ListPromptsResult> listPrompts() {
 		return this.listPrompts(McpSchema.FIRST_PAGE)
 			.expand(result -> (result.nextCursor() != null) ? this.listPrompts(result.nextCursor()) : Mono.empty())
-			.reduce(new ListPromptsResult(new ArrayList<>(), null), (allPromptsResult, result) -> {
-				allPromptsResult.prompts().addAll(result.prompts());
-				return allPromptsResult;
+			.reduce(new ArrayList<McpSchema.Prompt>(), (accumulated, result) -> {
+				accumulated.addAll(result.prompts());
+				return accumulated;
 			})
-			.map(result -> new McpSchema.ListPromptsResult(Collections.unmodifiableList(result.prompts()), null));
+			.map(all -> McpSchema.ListPromptsResult.builder(Collections.unmodifiableList(all)).build());
 	}
 
 	/**
@@ -890,8 +940,26 @@ public class McpAsyncClient {
 	 * @see #getPrompt(GetPromptRequest)
 	 */
 	public Mono<ListPromptsResult> listPrompts(String cursor) {
-		return this.initializer.withInitialization("listing prompts", init -> init.mcpSession()
-			.sendRequest(McpSchema.METHOD_PROMPT_LIST, new PaginatedRequest(cursor), LIST_PROMPTS_RESULT_TYPE_REF));
+		return this.listPromptsInternal(cursor, null);
+	}
+
+	/**
+	 * Retrieves a paginated list of prompts with optional metadata.
+	 * @param cursor Optional pagination cursor from a previous list request
+	 * @param meta Optional metadata to include in the request (_meta field)
+	 * @return A Mono that completes with the list of prompts result.
+	 * @see McpSchema.ListPromptsResult
+	 * @see #getPrompt(GetPromptRequest)
+	 */
+	public Mono<ListPromptsResult> listPrompts(String cursor, Map<String, Object> meta) {
+		return this.listPromptsInternal(cursor, meta);
+	}
+
+	private Mono<ListPromptsResult> listPromptsInternal(String cursor, Map<String, Object> meta) {
+		return this.initializer.withInitialization("listing prompts",
+				init -> init.mcpSession()
+					.sendRequest(McpSchema.METHOD_PROMPT_LIST, new PaginatedRequest(cursor, meta),
+							LIST_PROMPTS_RESULT_TYPE_REF));
 	}
 
 	/**
